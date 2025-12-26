@@ -8,11 +8,11 @@ version = "0.1.0"
 description = "Agentic Kubernetes Operator - Agent Runtime Server using Google ADK"
 requires-python = ">=3.11"
 dependencies = [
-    "google-cloud-adk>=0.1.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "httpx>=0.24.0",
     "uvicorn>=0.24.0",
+    "fastapi>=0.104.0",
     "litellm>=1.0.0",
 ]
 

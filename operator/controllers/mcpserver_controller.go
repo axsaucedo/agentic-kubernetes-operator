@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -195,17 +196,20 @@ func (r *MCPServerReconciler) constructDeployment(mcpserver *agenticv1alpha1.MCP
 	return deployment
 }
 
-// constructPythonContainer creates a container that runs MCP server via uvx
+// constructPythonContainer creates a container that runs MCP server
 func (r *MCPServerReconciler) constructPythonContainer(mcpserver *agenticv1alpha1.MCPServer) corev1.Container {
 	env := mcpserver.Spec.Config.Env
+	// Convert package name (with hyphens) to module name (with underscores)
+	packageName := mcpserver.Spec.Config.MCP
+	moduleName := strings.ReplaceAll(packageName, "-", "_")
 
 	container := corev1.Container{
 		Name:  "mcp-server",
-		Image: "python:3.11-slim",
+		Image: "python:3.12-slim",
 		Command: []string{
 			"sh",
 			"-c",
-			fmt.Sprintf("pip install uvx && uvx %s", mcpserver.Spec.Config.MCP),
+			fmt.Sprintf("pip install %s && ( %s || python -m %s )", packageName, packageName, moduleName),
 		},
 		Ports: []corev1.ContainerPort{
 			{
@@ -217,25 +221,25 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *agenticv1alpha
 		Env: env,
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/health",
-					Port:   intstr.FromInt(8000),
-					Scheme: corev1.URISchemeHTTP,
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt(8000),
 				},
 			},
-			InitialDelaySeconds: 30,
+			InitialDelaySeconds: 20,
 			PeriodSeconds:       10,
+			TimeoutSeconds:      3,
+			FailureThreshold:    3,
 		},
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/health",
-					Port:   intstr.FromInt(8000),
-					Scheme: corev1.URISchemeHTTP,
+				TCPSocket: &corev1.TCPSocketAction{
+					Port: intstr.FromInt(8000),
 				},
 			},
-			InitialDelaySeconds: 10,
+			InitialDelaySeconds: 15,
 			PeriodSeconds:       5,
+			TimeoutSeconds:      3,
+			FailureThreshold:    2,
 		},
 	}
 

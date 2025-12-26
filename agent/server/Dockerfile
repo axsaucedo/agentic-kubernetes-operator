@@ -9,7 +9,8 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml pyproject.toml
 
 # Install dependencies using UV
-RUN uv pip install --system -r <(uv pip compile pyproject.toml)
+RUN uv pip compile pyproject.toml -o requirements.txt && \
+    uv pip install --system -r requirements.txt
 
 # Copy source code
 COPY . .

@@ -196,7 +196,7 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 
 	if modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy {
 		// LiteLLM Proxy mode
-		image = "ghcr.io/litellm/litellm:latest"
+		image = "litellm/litellm:latest"
 		args = []string{"--config", "/etc/litellm/config.yaml"}
 
 		// Add user-provided env vars for proxy
