@@ -20,10 +20,9 @@ build:
 	@echo "Building all components..."
 	cd operator && make build
 	cd runtime/server && make build
-	cd mcp-servers/python && make build
 
 # Docker builds
-docker-build: docker-build-operator docker-build-runtime docker-build-mcp-servers
+docker-build: docker-build-operator docker-build-runtime
 	@echo "All Docker images built successfully"
 
 docker-build-operator:
@@ -34,16 +33,11 @@ docker-build-runtime:
 	@echo "Building runtime Docker image..."
 	cd runtime/server && make docker-build
 
-docker-build-mcp-servers:
-	@echo "Building MCP servers Docker image..."
-	cd mcp-servers/python && make docker-build
-
 # Test all components
 test:
 	@echo "Running all tests..."
 	cd operator && make test
 	cd runtime/server && make test
-	cd mcp-servers/python && make test
 	python -m pytest tests/ -v
 
 # Deploy operator to K8s
@@ -56,7 +50,6 @@ clean:
 	@echo "Cleaning all build artifacts..."
 	cd operator && make clean
 	cd runtime/server && make clean
-	cd mcp-servers/python && make clean
 	rm -rf build/ dist/ *.egg-info/
 
 # Development setup

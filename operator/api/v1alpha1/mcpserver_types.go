@@ -17,8 +17,9 @@ const (
 
 // MCPServerConfig defines the configuration for MCP server
 type MCPServerConfig struct {
-	// MCP is the MCP server identifier (e.g., "math", "websearch")
-	// Determines which server to load from the registry
+	// MCP is the package name to run with uvx (e.g., "mcp-server-calculator")
+	// For python-runtime type: runs as "uvx <package-name>"
+	// The package must be available on PyPI
 	MCP string `json:"mcp"`
 
 	// Env variables to pass to the MCP server
