@@ -247,7 +247,7 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 	container := corev1.Container{
 		Name:            "model-api",
 		Image:           image,
-		ImagePullPolicy: corev1.PullNever,
+		ImagePullPolicy: corev1.PullIfNotPresent,
 		Args:            args,
 		Ports: []corev1.ContainerPort{
 			{

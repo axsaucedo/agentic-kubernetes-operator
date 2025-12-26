@@ -241,7 +241,7 @@ func (r *AgentReconciler) constructDeployment(agent *agenticv1alpha1.Agent, mode
 	container := corev1.Container{
 		Name:            "agent",
 		Image:           "agentic-runtime:latest", // Should be available from docker build
-		ImagePullPolicy: corev1.PullNever,
+		ImagePullPolicy: corev1.PullIfNotPresent,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "http",
