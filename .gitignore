@@ -1,0 +1,65 @@
+# Go
+bin/
+dist/
+*.o
+*.a
+*.so
+.DS_Store
+vendor/
+go.sum
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.env
+.env.local
+.venv
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Kubernetes
+kubeconfig
+kubeconfig.yaml
+
+# Docker
+docker-compose.override.yml
+
+# Test outputs
+*.log
+
+# Operator SDK
+bin/
+dist/
+.operator-sdk/
+
+# Build artifacts
+build/
+dist/
