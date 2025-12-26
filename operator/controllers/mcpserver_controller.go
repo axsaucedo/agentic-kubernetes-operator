@@ -204,8 +204,9 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *agenticv1alpha
 	moduleName := strings.ReplaceAll(packageName, "-", "_")
 
 	container := corev1.Container{
-		Name:  "mcp-server",
-		Image: "python:3.12-slim",
+		Name:            "mcp-server",
+		Image:           "python:3.12-slim",
+		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{
 			"sh",
 			"-c",
