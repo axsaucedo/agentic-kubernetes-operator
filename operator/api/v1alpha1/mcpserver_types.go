@@ -1,0 +1,91 @@
+package v1alpha1
+
+import (
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// MCPServerType defines the type of MCP server runtime
+type MCPServerType string
+
+const (
+	// MCPServerTypePython means using Python-based MCP server
+	MCPServerTypePython MCPServerType = "python-runtime"
+	// MCPServerTypeNode means using Node.js-based MCP server (future)
+	MCPServerTypeNode MCPServerType = "node-runtime"
+)
+
+// MCPServerConfig defines the configuration for MCP server
+type MCPServerConfig struct {
+	// MCP is the MCP server identifier (e.g., "math", "websearch")
+	// Determines which server to load from the registry
+	MCP string `json:"mcp"`
+
+	// Env variables to pass to the MCP server
+	// +kubebuilder:validation:Optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+}
+
+// MCPServerSpec defines the desired state of MCPServer
+type MCPServerSpec struct {
+	// Type specifies the MCP server runtime type
+	// +kubebuilder:validation:Enum=python-runtime;node-runtime
+	Type MCPServerType `json:"type"`
+
+	// Config contains the MCP server configuration
+	Config MCPServerConfig `json:"config"`
+
+	// Resources defines compute resources for the server
+	// +kubebuilder:validation:Optional
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+}
+
+// MCPServerStatus defines the observed state of MCPServer
+type MCPServerStatus struct {
+	// Phase of the deployment
+	// +kubebuilder:validation:Enum=Pending;Ready;Failed
+	Phase string `json:"phase,omitempty"`
+
+	// Ready indicates if the MCP server is ready
+	Ready bool `json:"ready,omitempty"`
+
+	// Endpoint is the service endpoint for the MCP server
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// AvailableTools lists tools exposed by this server
+	// +kubebuilder:validation:Optional
+	AvailableTools []string `json:"availableTools,omitempty"`
+
+	// Message provides additional status information
+	Message string `json:"message,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=mcp;mcps
+// +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
+// +kubebuilder:printcolumn:name="MCP",type=string,JSONPath=`.spec.config.mcp`
+// +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=`.status.ready`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+
+// MCPServer is the Schema for the mcpservers API
+type MCPServer struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   MCPServerSpec   `json:"spec,omitempty"`
+	Status MCPServerStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+
+// MCPServerList contains a list of MCPServer
+type MCPServerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []MCPServer `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&MCPServer{}, &MCPServerList{})
+}
