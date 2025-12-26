@@ -1,6 +1,6 @@
 # Simple Math Agent - End-to-End Test
 
-This example tests the actual `runtime/server/server.py` by:
+This example tests the actual `agent/server/server.py` by:
 - Starting it as a subprocess via uvicorn
 - Configuring it entirely via environment variables
 - Making HTTP requests to test agent endpoints
@@ -54,7 +54,7 @@ python3 agent.py
 
 ## What This Test Does
 
-1. **Starts server.py**: Spawns `runtime/server/server.py` on port 8000 via uvicorn
+1. **Starts server.py**: Spawns `agent/server/server.py` on port 8000 via uvicorn
 2. **Waits for readiness**: Polls `/ready` endpoint until server responds
 3. **Gets Agent Card**: Retrieves agent capabilities via `/agent/card` (A2A discovery)
 4. **Invokes agent**: Sends a math task to `/agent/invoke` endpoint
@@ -108,7 +108,7 @@ Therefore, 234 + 567 - 89 = 712
 
 ## Kubernetes Equivalent
 
-This test uses the exact same `runtime/server/server.py` that runs in Kubernetes:
+This test uses the exact same `agent/server/server.py` that runs in Kubernetes:
 
 | Local | Kubernetes |
 |-------|-----------|

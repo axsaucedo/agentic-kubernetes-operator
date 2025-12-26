@@ -11,7 +11,7 @@ This example demonstrates:
 
 This mimics what happens in Kubernetes:
 - Operator creates multiple Agent CRs
-- Controller creates Pods running runtime/server/server.py
+- Controller creates Pods running agent/server/server.py
 - Service DNS enables agent discovery
 - Agents communicate via /agent/card and /agent/invoke endpoints
 """
@@ -50,14 +50,14 @@ class AgentProcess:
         try:
             logger.info(f"Starting {self.name} agent on port {self.port}...")
 
-            # Find runtime/server directory
-            # Script is at: runtime/examples/multi-agent-coordination/orchestrate.py
-            # We need: runtime/server/
+            # Find agent/server directory
+            # Script is at: agent/examples/multi-agent-coordination/orchestrate.py
+            # We need: agent/server/
             script_dir = Path(__file__).parent
             runtime_server_dir = script_dir.parent.parent / "server"
 
             if not runtime_server_dir.exists():
-                logger.error(f"runtime/server not found at {runtime_server_dir}")
+                logger.error(f"agent/server not found at {runtime_server_dir}")
                 return False
 
             # Prepare environment for server process

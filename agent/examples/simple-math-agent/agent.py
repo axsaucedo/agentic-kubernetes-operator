@@ -3,14 +3,14 @@
 Simple Math Agent - End-to-end test of agent runtime server.
 
 This example demonstrates:
-- Starting the actual runtime/server/server.py as a subprocess
+- Starting the actual agent/server/server.py as a subprocess
 - Configuring it entirely via environment variables
 - Making HTTP requests to agent endpoints
 - Verifying the agent can reach Ollama and MCP servers
 
 This mimics what happens in Kubernetes:
 - Controller creates a Pod with environment variables
-- Pod runs: python -m uvicorn runtime.server.server:app
+- Pod runs: python -m uvicorn agent.server.server:app
 - Other components make HTTP requests to agent endpoints
 """
 
@@ -51,14 +51,14 @@ class SimpleAgentTest:
         """Start the agent runtime server as a subprocess."""
         logger.info(f"Starting agent server on port {self.agent_port}...")
 
-        # Find runtime/server directory relative to this script
-        # Script is at: runtime/examples/simple-math-agent/agent.py
-        # We need: runtime/server/
+        # Find agent/server directory relative to this script
+        # Script is at: agent/examples/simple-math-agent/agent.py
+        # We need: agent/server/
         script_dir = Path(__file__).parent
         runtime_server_dir = script_dir.parent.parent / "server"
 
         if not runtime_server_dir.exists():
-            logger.error(f"runtime/server directory not found at {runtime_server_dir}")
+            logger.error(f"agent/server directory not found at {runtime_server_dir}")
             return False
 
         # Prepare environment for server process

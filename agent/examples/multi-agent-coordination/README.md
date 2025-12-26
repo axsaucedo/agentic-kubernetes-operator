@@ -1,6 +1,6 @@
 # Multi-Agent Coordination - End-to-End Test
 
-This example demonstrates Agent-to-Agent (A2A) communication where multiple instances of the actual `runtime/server/server.py` coordinate to solve complex tasks.
+This example demonstrates Agent-to-Agent (A2A) communication where multiple instances of the actual `agent/server/server.py` coordinate to solve complex tasks.
 
 **Architecture**:
 - **Coordinator Agent** (port 8000): Orchestrates tasks and delegates to specialized agents
@@ -8,7 +8,7 @@ This example demonstrates Agent-to-Agent (A2A) communication where multiple inst
 - **Analyst Agent** (port 8002): Performs calculations using math MCP tools
 
 **Key Features**:
-- Each agent is a real runtime/server/server.py instance running via uvicorn
+- Each agent is a real agent/server/server.py instance running via uvicorn
 - A2A communication via HTTP endpoints (`/agent/card`, `/agent/invoke`)
 - Dynamic agent discovery and peer configuration
 - Shared model API (Ollama)
@@ -60,7 +60,7 @@ This example demonstrates Agent-to-Agent (A2A) communication where multiple inst
                 └────────────────────┘
 ```
 
-Each agent is a separate `runtime/server/server.py` process:
+Each agent is a separate `agent/server/server.py` process:
 - Loads config entirely from environment variables
 - Communicates with peers via HTTP endpoints
 - Accesses shared model API
@@ -159,7 +159,7 @@ INFO - Cleaning up agents...
 
 This is an **actual end-to-end test** of the production code:
 
-1. **Server Startup**: Verifies `runtime/server/server.py` starts correctly with environment variables
+1. **Server Startup**: Verifies `agent/server/server.py` starts correctly with environment variables
 2. **Configuration Loading**: Tests environment variable parsing for agents and MCP servers
 3. **Health Checks**: Validates `/health` and `/ready` endpoints
 4. **Agent Card Discovery**: Tests A2A agent discovery via `/agent/card`

@@ -63,7 +63,7 @@ spec:
       volumes:
       - name: agent-code
         hostPath:
-          path: /Users/asaucedo/agentic-kubernetes-operator/runtime/server
+          path: /Users/asaucedo/agentic-kubernetes-operator/agent/server
           type: Directory
 ---
 apiVersion: v1
