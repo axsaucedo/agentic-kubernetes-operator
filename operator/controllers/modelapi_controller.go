@@ -180,6 +180,18 @@ func (r *ModelAPIReconciler) constructDeployment(modelapi *agenticv1alpha1.Model
 					Containers: []corev1.Container{
 						r.constructContainer(modelapi),
 					},
+					Volumes: []corev1.Volume{
+						{
+							Name: "litellm-config",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "litellm-config",
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
@@ -197,7 +209,7 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 	if modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy {
 		// LiteLLM Proxy mode
 		image = "litellm/litellm:latest"
-		args = []string{"--config", "/etc/litellm/config.yaml"}
+		args = []string{"--config", "/etc/litellm/config.yaml", "--port", "8000"}
 
 		// Add user-provided env vars for proxy
 		if modelapi.Spec.ProxyConfig != nil {
@@ -233,9 +245,10 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 	}
 
 	container := corev1.Container{
-		Name:  "model-api",
-		Image: image,
-		Args:  args,
+		Name:            "model-api",
+		Image:           image,
+		ImagePullPolicy: corev1.PullNever,
+		Args:            args,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "http",
@@ -244,6 +257,12 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 			},
 		},
 		Env: env,
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "litellm-config",
+				MountPath: "/etc/litellm",
+			},
+		},
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{

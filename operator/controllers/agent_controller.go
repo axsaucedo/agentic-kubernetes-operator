@@ -239,8 +239,9 @@ func (r *AgentReconciler) constructDeployment(agent *agenticv1alpha1.Agent, mode
 	env := r.constructEnvVars(agent, modelapi, mcpServers, peerAgents)
 
 	container := corev1.Container{
-		Name:  "agent",
-		Image: "agentic-runtime:latest", // Should be available from docker build
+		Name:            "agent",
+		Image:           "agentic-runtime:latest", // Should be available from docker build
+		ImagePullPolicy: corev1.PullNever,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "http",
