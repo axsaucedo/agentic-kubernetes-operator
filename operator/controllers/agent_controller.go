@@ -20,7 +20,7 @@ import (
 	agenticv1alpha1 "agentic.example.com/agentic-operator/api/v1alpha1"
 )
 
-const agentFinalizerName = "agentic.example.com/agent-finalizer"
+const agentFinalizerName = "ethical.institute/agent-finalizer"
 
 // AgentReconciler reconciles an Agent object
 type AgentReconciler struct {
@@ -29,11 +29,11 @@ type AgentReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=agentic.example.com,resources=agents,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=agentic.example.com,resources=agents/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=agentic.example.com,resources=agents/finalizers,verbs=update
-//+kubebuilder:rbac:groups=agentic.example.com,resources=modelapis,verbs=get;list;watch
-//+kubebuilder:rbac:groups=agentic.example.com,resources=mcpservers,verbs=get;list;watch
+//+kubebuilder:rbac:groups=ethical.institute,resources=agents,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=ethical.institute,resources=agents/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=ethical.institute,resources=agents/finalizers,verbs=update
+//+kubebuilder:rbac:groups=ethical.institute,resources=modelapis,verbs=get;list;watch
+//+kubebuilder:rbac:groups=ethical.institute,resources=mcpservers,verbs=get;list;watch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 

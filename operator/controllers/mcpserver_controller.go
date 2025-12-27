@@ -21,7 +21,7 @@ import (
 	agenticv1alpha1 "agentic.example.com/agentic-operator/api/v1alpha1"
 )
 
-const mcpServerFinalizerName = "agentic.example.com/mcpserver-finalizer"
+const mcpServerFinalizerName = "ethical.institute/mcpserver-finalizer"
 
 // MCPServerReconciler reconciles a MCPServer object
 type MCPServerReconciler struct {
@@ -30,9 +30,9 @@ type MCPServerReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=agentic.example.com,resources=mcpservers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=agentic.example.com,resources=mcpservers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=agentic.example.com,resources=mcpservers/finalizers,verbs=update
+//+kubebuilder:rbac:groups=ethical.institute,resources=mcpservers,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=ethical.institute,resources=mcpservers/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=ethical.institute,resources=mcpservers/finalizers,verbs=update
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 

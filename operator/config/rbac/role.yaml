@@ -17,7 +17,19 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agentic.example.com
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ethical.institute
   resources:
   - agents
   - mcpservers
@@ -31,7 +43,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agentic.example.com
+  - ethical.institute
   resources:
   - agents/finalizers
   - mcpservers/finalizers
@@ -39,7 +51,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - agentic.example.com
+  - ethical.institute
   resources:
   - agents/status
   - mcpservers/status
@@ -49,12 +61,11 @@ rules:
   - patch
   - update
 - apiGroups:
-  - apps
+  - coordination.k8s.io
   resources:
-  - deployments
+  - leases
   verbs:
   - create
-  - delete
   - get
   - list
   - patch

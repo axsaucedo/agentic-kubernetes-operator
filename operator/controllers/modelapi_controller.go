@@ -20,7 +20,7 @@ import (
 	agenticv1alpha1 "agentic.example.com/agentic-operator/api/v1alpha1"
 )
 
-const modelAPIFinalizerName = "agentic.example.com/modelapi-finalizer"
+const modelAPIFinalizerName = "ethical.institute/modelapi-finalizer"
 
 // ModelAPIReconciler reconciles a ModelAPI object
 type ModelAPIReconciler struct {
@@ -29,9 +29,9 @@ type ModelAPIReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=agentic.example.com,resources=modelapis,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=agentic.example.com,resources=modelapis/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=agentic.example.com,resources=modelapis/finalizers,verbs=update
+//+kubebuilder:rbac:groups=ethical.institute,resources=modelapis,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=ethical.institute,resources=modelapis/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=ethical.institute,resources=modelapis/finalizers,verbs=update
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 
@@ -205,11 +205,15 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 	var image string
 	var args []string
 	var env []corev1.EnvVar
+	var port int32 = 8000
+	var healthPath string = "/health"
 
 	if modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy {
 		// LiteLLM Proxy mode
 		image = "litellm/litellm:latest"
 		args = []string{"--config", "/etc/litellm/config.yaml", "--port", "8000"}
+		port = 8000
+		healthPath = "/health"
 
 		// Add user-provided env vars for proxy
 		if modelapi.Spec.ProxyConfig != nil {
@@ -223,23 +227,14 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 		})
 
 	} else {
-		// vLLM Hosted mode
-		image = "vllm/vllm:latest"
+		// Ollama Hosted mode
+		image = "ollama/ollama:latest"
+		args = []string{}
+		port = 11434
+		healthPath = "/"
 
-		// vLLM server command
-		args = []string{
-			"python",
-			"-m",
-			"vllm.entrypoints.openai.api_server",
-			"--host", "0.0.0.0",
-			"--port", "8000",
-		}
-
-		// Add model to args
+		// Add user-provided env vars for hosted
 		if modelapi.Spec.ServerConfig != nil {
-			args = append(args, "--model", modelapi.Spec.ServerConfig.Model)
-
-			// Add user-provided env vars for hosted
 			env = append(env, modelapi.Spec.ServerConfig.Env...)
 		}
 	}
@@ -252,7 +247,7 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "http",
-				ContainerPort: 8000,
+				ContainerPort: port,
 				Protocol:      corev1.ProtocolTCP,
 			},
 		},
@@ -266,8 +261,8 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/health",
-					Port:   intstr.FromInt(8000),
+					Path:   healthPath,
+					Port:   intstr.FromInt(int(port)),
 					Scheme: corev1.URISchemeHTTP,
 				},
 			},
@@ -277,8 +272,8 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/health",
-					Port:   intstr.FromInt(8000),
+					Path:   healthPath,
+					Port:   intstr.FromInt(int(port)),
 					Scheme: corev1.URISchemeHTTP,
 				},
 			},

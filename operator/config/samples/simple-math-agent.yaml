@@ -1,6 +1,6 @@
 ---
 # ModelAPI resource - LiteLLM proxy to local Ollama
-apiVersion: agentic.example.com/v1alpha1
+apiVersion: ethical.institute/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama-proxy
@@ -21,7 +21,7 @@ spec:
 
 ---
 # MCPServer resource - Echo tool (sample MCP server)
-apiVersion: agentic.example.com/v1alpha1
+apiVersion: ethical.institute/v1alpha1
 kind: MCPServer
 metadata:
   name: echo-server
@@ -43,7 +43,7 @@ spec:
 
 ---
 # Agent resource - Echo agent (sample agent)
-apiVersion: agentic.example.com/v1alpha1
+apiVersion: ethical.institute/v1alpha1
 kind: Agent
 metadata:
   name: echo-agent
