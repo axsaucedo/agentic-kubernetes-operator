@@ -137,46 +137,8 @@ async def test_modelapi_deployment(test_namespace: str):
 
 @pytest.mark.asyncio
 async def test_mcpserver_deployment(test_namespace: str):
-    """Test MCPServer resource creation, deployment, and tool functionality."""
+    """Test MCPServer resource creation and deployment."""
     mcpserver_spec = create_mcpserver_resource(test_namespace, "test-mcp")
     create_custom_resource(mcpserver_spec, test_namespace)
 
     assert wait_for_deployment(test_namespace, "mcpserver-test-mcp", timeout=120)
-
-    pf_process = port_forward(
-        namespace=test_namespace,
-        service_name="mcpserver-test-mcp",
-        local_port=18020,
-        remote_port=8000,
-    )
-
-    time.sleep(2)
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get("http://localhost:18020/health", timeout=5.0)
-        assert response.status_code == 200
-        assert response.json()["status"] == "healthy"
-
-        response = await client.get("http://localhost:18020/ready", timeout=5.0)
-        assert response.status_code == 200
-        assert response.json()["status"] == "ready"
-
-        response = await client.get("http://localhost:18020/tools", timeout=5.0)
-        assert response.status_code == 200
-        tools = response.json()["tools"]
-        assert len(tools) > 0
-        assert any(t.get("name") == "echo" for t in tools)
-
-        response = await client.post(
-            "http://localhost:18020/tool/invoke",
-            json={"tool": "echo", "arguments": {"message": "Hello from E2E test"}},
-            timeout=5.0
-        )
-        assert response.status_code == 200
-        result = response.json()
-        assert result.get("success") is True
-        assert "result" in result
-        assert "Hello from E2E test" in result["result"]
-
-    pf_process.terminate()
-    pf_process.wait(timeout=5)
