@@ -91,7 +91,7 @@ export MODEL_API_URL=http://localhost:8001/v1
 export MODEL_NAME=tinyllama
 
 # Run test
-python3 agent/examples/simple-math-agent/agent.py
+python3 agent/examples/echo-agent/agent.py
 ```
 
 ### 3. Check vLLM logs

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Simple Math Agent - End-to-end test of agent runtime server.
+Echo Agent - End-to-end test of agent runtime server with MCP tool integration.
 
 This example demonstrates:
 - Starting the actual agent/server/server.py as a subprocess
 - Configuring it entirely via environment variables
 - Making HTTP requests to agent endpoints
-- Verifying the agent can reach Ollama and MCP servers
+- Verifying the agent can load and use MCP tools
+- Testing MCP server integration with echo tool
 
 This mimics what happens in Kubernetes:
 - Controller creates a Pod with environment variables
 - Pod runs: python -m uvicorn agent.server.server:app
 - Other components make HTTP requests to agent endpoints
+- Agent loads tools from MCP servers
 """
 
 import os
@@ -22,8 +24,14 @@ import logging
 import signal
 from typing import Optional
 from pathlib import Path
+from dotenv import load_dotenv
 
 import httpx
+
+# Load .env file from the same directory as this script
+env_file = Path(__file__).parent / ".env"
+if env_file.exists():
+    load_dotenv(env_file)
 
 # Configure logging
 logging.basicConfig(
@@ -33,16 +41,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class SimpleAgentTest:
-    """Test runner for simple math agent using actual server.py."""
+class EchoAgentTest:
+    """Test runner for echo agent with MCP tool integration using actual server.py."""
 
     def __init__(self):
         """Initialize test configuration from environment."""
-        self.agent_name = os.getenv("AGENT_NAME", "math-agent")
+        self.agent_name = os.getenv("AGENT_NAME", "echo-agent")
         self.agent_port = int(os.getenv("AGENT_PORT", "8000"))
         self.agent_url = f"http://localhost:{self.agent_port}"
         self.model_api_url = os.getenv("MODEL_API_URL", "http://localhost:11434/v1")
-        self.mcp_server_url = os.getenv("MCP_SERVER_MATH_TOOLS_URL", "http://localhost:8001")
+        self.mcp_server_url = os.getenv("MCP_SERVER_ECHO_SERVER_URL", "http://localhost:8001")
 
         self.server_process = None
         self.server_ready = False
@@ -52,7 +60,7 @@ class SimpleAgentTest:
         logger.info(f"Starting agent server on port {self.agent_port}...")
 
         # Find agent/server directory relative to this script
-        # Script is at: agent/examples/simple-math-agent/agent.py
+        # Script is at: agent/examples/echo-agent/agent.py
         # We need: agent/server/
         script_dir = Path(__file__).parent
         runtime_server_dir = script_dir.parent.parent / "server"
@@ -71,25 +79,23 @@ class SimpleAgentTest:
             ),
             "AGENT_INSTRUCTIONS": os.getenv(
                 "AGENT_INSTRUCTIONS",
-                "You are a helpful mathematical assistant. You have access to a calculator tool."
+                "You are a helpful assistant. You have access to an echo tool for testing. Always provide clear and concise responses."
             ),
             "MODEL_API_URL": self.model_api_url,
             "MODEL_NAME": os.getenv("MODEL_NAME", "smollm2:135m"),
-            "MCP_SERVERS": "math-tools",
-            "MCP_SERVER_MATH_TOOLS_URL": self.mcp_server_url,
+            "MCP_SERVERS": "echo_server",
+            "MCP_SERVER_ECHO_SERVER_URL": self.mcp_server_url,
             "SERVER_PORT": str(self.agent_port),
             "AGENT_LOG_LEVEL": os.getenv("AGENT_LOG_LEVEL", "INFO"),
             "PYTHONUNBUFFERED": "1",  # Don't buffer output
         })
 
         try:
-            # Start server using uvicorn
+            # Start server using uvicorn (stream output to console for debugging)
             self.server_process = subprocess.Popen(
                 ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", f"--port", str(self.agent_port)],
                 cwd=str(runtime_server_dir),
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
                 text=True,
             )
 
@@ -178,10 +184,10 @@ class SimpleAgentTest:
             logger.error("Failed to get agent card")
             return
 
-        # Test 2: Simple math task
-        logger.info("\nTest 2: Math Reasoning Task")
+        # Test 2: Echo tool task
+        logger.info("\nTest 2: Echo Tool Task")
         logger.info("-" * 40)
-        task = "Calculate: What is 234 + 567 - 89? Show your work step by step."
+        task = "Use the echo tool to say 'Hello from the echo agent!' and describe what you see."
         result = await self.invoke_agent(task)
 
         if result:
@@ -219,7 +225,7 @@ class SimpleAgentTest:
 
 async def main():
     """Entry point."""
-    test = SimpleAgentTest()
+    test = EchoAgentTest()
     await test.run()
 
 

@@ -1,4 +1,4 @@
-.PHONY: help build docker-build test clean run run-example-simple run-example-multi
+.PHONY: help build docker-build test clean run run-example-echo run-example-multi
 
 IMG ?= agentic-runtime:latest
 
@@ -9,7 +9,7 @@ help:
 	@echo "  test                - Run tests"
 	@echo "  clean               - Clean build artifacts"
 	@echo "  run                 - Run server locally"
-	@echo "  run-example-simple  - Run simple math agent example"
+	@echo "  run-example-echo    - Run echo agent example"
 	@echo "  run-example-multi   - Run multi-agent example"
 
 # Install dependencies
@@ -33,9 +33,9 @@ clean:
 run:
 	uv run python -m uvicorn server:app --reload --host 0.0.0.0 --port 8000
 
-# Run simple math agent example
-run-example-simple:
-	cd examples/simple-math-agent && uv run python agent.py
+# Run echo agent example
+run-example-echo:
+	cd examples/echo-agent && python3 agent.py
 
 # Run multi-agent example
 run-example-multi:

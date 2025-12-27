@@ -1,11 +1,11 @@
 .PHONY: help setup run test clean
 
 help:
-	@echo "Simple Math Agent - Local Example"
+	@echo "Echo Agent - MCP Tool Integration Test"
 	@echo ""
 	@echo "Available targets:"
 	@echo "  setup      - Setup local environment (copy .env file)"
-	@echo "  run        - Run the simple math agent"
+	@echo "  run        - Run the echo agent test"
 	@echo "  test       - Run tests (placeholder)"
 	@echo "  clean      - Clean up"
 
@@ -19,7 +19,7 @@ setup:
 	fi
 
 run: setup
-	@echo "Running simple math agent..."
+	@echo "Running echo agent test..."
 	@python3 agent.py
 
 test:

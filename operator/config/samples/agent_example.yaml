@@ -1,18 +1,18 @@
-apiVersion: agentic.example.com/v1alpha1
+apiVersion: ethical.institute/v1alpha1
 kind: Agent
 metadata:
-  name: math-agent
+  name: echo-agent
   namespace: default
 spec:
   modelAPI: ollama-proxy
   mcpServers:
-  - math-tools
+  - echo-server
   config:
-    description: "A mathematical reasoning agent"
+    description: "A sample echo agent"
     instructions: |
-      You are a helpful mathematical assistant.
-      You have access to a calculator tool for performing calculations.
-      Always show your reasoning and calculations clearly.
+      You are a helpful assistant.
+      You have access to an echo tool for testing.
+      Always provide clear and concise responses.
     env:
     - name: AGENT_LOG_LEVEL
       value: "INFO"

@@ -1,0 +1,76 @@
+---
+# ModelAPI resource - LiteLLM proxy to local Ollama
+apiVersion: ethical.institute/v1alpha1
+kind: ModelAPI
+metadata:
+  name: ollama-proxy
+  namespace: agentic-system
+spec:
+  mode: Proxy
+  proxyConfig:
+    env:
+    - name: OPENAI_API_KEY
+      value: "sk-test"
+    - name: LITELLM_LOG
+      value: "WARN"
+    - name: LITELLM_MODEL_LIST
+      value: "ollama/smollm2:135m"
+    # For Docker Desktop, use host.docker.internal to reach host's Ollama
+    - name: OLLAMA_BASE_URL
+      value: "http://host.docker.internal:11434"
+
+---
+# MCPServer resource - Echo tool (sample MCP server)
+apiVersion: ethical.institute/v1alpha1
+kind: MCPServer
+metadata:
+  name: echo-server
+  namespace: agentic-system
+spec:
+  type: python-runtime
+  config:
+    mcp: "test-mcp-echo-server"
+    env:
+    - name: LOG_LEVEL
+      value: "INFO"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+---
+# Agent resource - Echo agent (sample agent)
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: echo-agent
+  namespace: agentic-system
+spec:
+  modelAPI: ollama-proxy
+  mcpServers:
+  - echo-server
+  config:
+    description: "A sample echo agent"
+    instructions: |
+      You are a helpful assistant.
+      You have access to an echo tool for testing.
+      Always provide clear and concise responses.
+    env:
+    - name: AGENT_LOG_LEVEL
+      value: "INFO"
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+  agentNetwork:
+    expose: true
+    access: []
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"

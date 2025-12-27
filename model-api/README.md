@@ -86,7 +86,7 @@ curl http://localhost:4000/models
 ```bash
 # Run agent test pointing to LiteLLM
 MODEL_API_URL=http://localhost:4000 \
-python3 agent/examples/simple-math-agent/agent.py
+python3 agent/examples/echo-agent/agent.py
 ```
 
 ### Configuration
@@ -172,7 +172,7 @@ export MODEL_API_URL=http://localhost:8001/v1
 export MODEL_NAME=tinyllama
 
 # Run test
-python3 agent/examples/simple-math-agent/agent.py
+python3 agent/examples/echo-agent/agent.py
 ```
 
 ### Kubernetes Deployment
@@ -221,20 +221,20 @@ See `model-api/vllm/README.md` for more models and configuration options.
 **Using LiteLLM proxy** (connects to Ollama):
 ```bash
 export MODEL_API_URL=http://localhost:4000/v1
-python3 agent/examples/simple-math-agent/agent.py
+python3 agent/examples/echo-agent/agent.py
 ```
 
 **Using vLLM** (standalone):
 ```bash
 export MODEL_API_URL=http://localhost:8001/v1
 export MODEL_NAME=tinyllama
-python3 agent/examples/simple-math-agent/agent.py
+python3 agent/examples/echo-agent/agent.py
 ```
 
 **Using direct Ollama**:
 ```bash
 export MODEL_API_URL=http://localhost:11434/v1
-python3 agent/examples/simple-math-agent/agent.py
+python3 agent/examples/echo-agent/agent.py
 ```
 
 ### For Kubernetes
@@ -288,7 +288,7 @@ curl -X POST http://localhost:4000/v1/chat/completions \
 
 ## Next Steps
 
-1. **Test LiteLLM locally** → Run simple-math-agent with LiteLLM proxy
+1. **Test LiteLLM locally** → Run echo-agent with LiteLLM proxy
 2. **Test vLLM** → Set up vLLM approach (Phase 5.2)
 3. **Deploy to K8s** → Use operator to deploy ModelAPI resources
 4. **Monitor** → Check logs and metrics
