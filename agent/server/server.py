@@ -28,8 +28,8 @@ import httpx
 import uvicorn
 
 # Import local modules
-from mcp_tools import MCPToolLoader
-from a2a import A2AClient
+from agent.server.mcp_tools import MCPToolLoader
+from agent.server.a2a import A2AClient
 
 # Configure logging
 log_level = os.getenv("AGENT_LOG_LEVEL", "INFO")
