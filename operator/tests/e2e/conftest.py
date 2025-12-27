@@ -15,13 +15,9 @@ def create_custom_resource(body: Dict[str, Any], namespace: str):
     kubectl("apply", "-f", "-", "-n", namespace, _in=yaml_content)
 
 
-def wait_for_deployment(namespace: str, name: str, timeout: int = 300) -> bool:
+def wait_for_deployment(namespace: str, name: str, timeout: int = 300):
     """Wait for deployment to be ready."""
-    try:
-        kubectl("rollout", "status", f"deployment/{name}", "-n", namespace, "--timeout", f"{timeout}s")
-        return True
-    except Exception:
-        return False
+    kubectl("rollout", "status", f"deployment/{name}", "-n", namespace, "--timeout", f"{timeout}s")
 
 
 def port_forward(namespace: str, service_name: str, local_port: int, remote_port: int = 8000) -> subprocess.Popen:

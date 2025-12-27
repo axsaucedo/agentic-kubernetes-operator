@@ -5,6 +5,9 @@ import subprocess
 import pytest
 import httpx
 
+from mcp.client.sse import sse_client
+from mcp.client.session import ClientSession
+
 from .conftest import (
     create_custom_resource,
     wait_for_deployment,
@@ -32,9 +35,9 @@ async def test_echo_agent_full_deployment(test_namespace: str):
     )
     create_custom_resource(agent_spec, test_namespace)
 
-    assert wait_for_deployment(test_namespace, "modelapi-ollama-proxy", timeout=120)
-    assert wait_for_deployment(test_namespace, "mcpserver-echo-server", timeout=120)
-    assert wait_for_deployment(test_namespace, "agent-echo-agent", timeout=120)
+    wait_for_deployment(test_namespace, "modelapi-ollama-proxy", timeout=120)
+    wait_for_deployment(test_namespace, "mcpserver-echo-server", timeout=120)
+    wait_for_deployment(test_namespace, "agent-echo-agent", timeout=120)
 
     pf_process = port_forward(
         namespace=test_namespace,
@@ -83,9 +86,9 @@ async def test_echo_agent_invoke_task(test_namespace: str):
     )
     create_custom_resource(agent_spec, test_namespace)
 
-    assert wait_for_deployment(test_namespace, "modelapi-ollama-proxy", timeout=120)
-    assert wait_for_deployment(test_namespace, "mcpserver-echo-server", timeout=120)
-    assert wait_for_deployment(test_namespace, "agent-echo-agent", timeout=120)
+    wait_for_deployment(test_namespace, "modelapi-ollama-proxy", timeout=120)
+    wait_for_deployment(test_namespace, "mcpserver-echo-server", timeout=120)
+    wait_for_deployment(test_namespace, "agent-echo-agent", timeout=120)
 
     pf_process = port_forward(
         namespace=test_namespace,
@@ -116,7 +119,7 @@ async def test_modelapi_deployment(test_namespace: str):
     modelapi_spec = create_modelapi_resource(test_namespace, "test-modelapi")
     create_custom_resource(modelapi_spec, test_namespace)
 
-    assert wait_for_deployment(test_namespace, "modelapi-test-modelapi", timeout=120)
+    wait_for_deployment(test_namespace, "modelapi-test-modelapi", timeout=120)
 
     pf_process = port_forward(
         namespace=test_namespace,
@@ -137,8 +140,34 @@ async def test_modelapi_deployment(test_namespace: str):
 
 @pytest.mark.asyncio
 async def test_mcpserver_deployment(test_namespace: str):
-    """Test MCPServer resource creation and deployment."""
+    """Test MCPServer resource creation, deployment, and MCP functionality."""
     mcpserver_spec = create_mcpserver_resource(test_namespace, "test-mcp")
     create_custom_resource(mcpserver_spec, test_namespace)
 
-    assert wait_for_deployment(test_namespace, "mcpserver-test-mcp", timeout=120)
+    wait_for_deployment(test_namespace, "mcpserver-test-mcp", timeout=120)
+
+    pf_process = port_forward(
+        namespace=test_namespace,
+        service_name="mcpserver-test-mcp",
+        local_port=18020,
+        remote_port=8000,
+    )
+
+    time.sleep(2)
+
+    async with sse_client("http://localhost:18020/sse") as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            tools = await session.list_tools()
+            assert tools.tools
+            tool_names = [t.name for t in tools.tools]
+            assert "echo" in tool_names
+
+            result = await session.call_tool("echo", {"text": "Hello from Kubernetes"})
+            assert result.content
+            assert result.content[0].text
+            assert "Hello from Kubernetes" in result.content[0].text
+
+    pf_process.terminate()
+    pf_process.wait(timeout=5)
