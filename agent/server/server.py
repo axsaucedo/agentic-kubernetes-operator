@@ -88,7 +88,9 @@ def load_config() -> Dict[str, Any]:
     peer_agents = {}
     peer_names = [a.strip() for a in os.getenv("PEER_AGENTS", "").split(",") if a.strip()]
     for name in peer_names:
-        env_key = f"PEER_AGENT_{name.upper()}_CARD_URL"
+        # Convert name to valid env var format (uppercase, replace hyphens with underscores)
+        env_name = name.upper().replace("-", "_")
+        env_key = f"PEER_AGENT_{env_name}_CARD_URL"
         url = os.getenv(env_key)
         if url:
             peer_agents[name] = url

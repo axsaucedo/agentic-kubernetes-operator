@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -132,13 +133,13 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			peerAgent := &agenticv1alpha1.Agent{}
 			err := r.Get(ctx, types.NamespacedName{Name: peerName, Namespace: agent.Namespace}, peerAgent)
 			if err != nil {
-				log.Error(err, "unable to fetch peer Agent", "agent", peerName)
-				// Peer agents are not critical, just log
+				log.Info("peer agent not found yet", "peer", peerName)
 				continue
 			}
 
 			if peerAgent.Status.Endpoint != "" {
 				peerAgents[peerName] = peerAgent.Status.Endpoint
+				log.Info("found peer agent endpoint", "peer", peerName, "endpoint", peerAgent.Status.Endpoint)
 			}
 		}
 	}
@@ -370,13 +371,15 @@ func (r *AgentReconciler) constructEnvVars(agent *agenticv1alpha1.Agent, modelap
 
 		env = append(env, corev1.EnvVar{
 			Name:  "PEER_AGENTS",
-			Value: fmt.Sprintf("%v", peerNames),
+			Value: strings.Join(peerNames, ","),
 		})
 
 		// Add individual peer agent card URLs
 		for name, endpoint := range peerAgents {
+			// Convert name to valid env var format (uppercase, replace hyphens with underscores)
+			envName := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 			env = append(env, corev1.EnvVar{
-				Name:  fmt.Sprintf("PEER_AGENT_%s_CARD_URL", name),
+				Name:  fmt.Sprintf("PEER_AGENT_%s_CARD_URL", envName),
 				Value: endpoint,
 			})
 		}
