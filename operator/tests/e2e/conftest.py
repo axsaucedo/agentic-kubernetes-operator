@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures for E2E tests."""
 
 import time
+import sys
 import subprocess
 from typing import Dict, Any, Generator
 
@@ -24,8 +25,8 @@ def port_forward(namespace: str, service_name: str, local_port: int, remote_port
     """Start port-forward to a service."""
     process = subprocess.Popen(
         ["kubectl", "port-forward", f"svc/{service_name}", f"{local_port}:{remote_port}", "-n", namespace],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
     )
     time.sleep(1)
     return process
