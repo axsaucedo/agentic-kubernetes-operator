@@ -8,7 +8,7 @@ import httpx
 from mcp.client.streamable_http import streamable_http_client
 from mcp.client.session import ClientSession
 
-from .conftest import (
+from e2e.conftest import (
     create_custom_resource,
     wait_for_deployment,
     port_forward,

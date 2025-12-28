@@ -8,7 +8,7 @@ import time
 import pytest
 import httpx
 
-from .conftest import (
+from e2e.conftest import (
     create_custom_resource,
     wait_for_deployment,
     port_forward,
@@ -20,7 +20,6 @@ from .conftest import (
 def create_multi_agent_resources(namespace: str):
     """Create coordinator and worker agents for multi-agent testing."""
     modelapi_spec = create_modelapi_resource(namespace, "multi-agent-api")
-
     coordinator_spec = {
         "apiVersion": "ethical.institute/v1alpha1",
         "kind": "Agent",
@@ -49,7 +48,6 @@ def create_multi_agent_resources(namespace: str):
             },
         },
     }
-
     worker_1_spec = {
         "apiVersion": "ethical.institute/v1alpha1",
         "kind": "Agent",
@@ -78,7 +76,6 @@ def create_multi_agent_resources(namespace: str):
             },
         },
     }
-
     worker_2_spec = {
         "apiVersion": "ethical.institute/v1alpha1",
         "kind": "Agent",
@@ -107,7 +104,6 @@ def create_multi_agent_resources(namespace: str):
             },
         },
     }
-
     return {
         "modelapi": modelapi_spec,
         "coordinator": coordinator_spec,
