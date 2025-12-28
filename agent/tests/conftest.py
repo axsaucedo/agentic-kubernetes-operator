@@ -50,11 +50,11 @@ class AgentServer:
         env["PYTHONUNBUFFERED"] = "1"
 
         # Find repo root directory (where agent/ package is located)
-        repo_root = Path(__file__).parent.parent.parent
+        repo_root = Path(__file__).parent.parent
 
         try:
             self.process = subprocess.Popen(
-                ["python", "-m", "uvicorn", "agent.server:app",
+                ["python", "-m", "uvicorn", "server:app",
                  "--host", "0.0.0.0", "--port", str(self.port)],
                 cwd=str(repo_root),
                 env=env,
@@ -74,6 +74,7 @@ class AgentServer:
 
         except Exception as e:
             logger.error(f"Failed to start server: {e}")
+            raise
             return False
 
     def _wait_for_readiness(self, timeout: int) -> bool:

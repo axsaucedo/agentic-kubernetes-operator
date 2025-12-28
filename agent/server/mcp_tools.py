@@ -1,11 +1,3 @@
-"""
-MCP Tool Integration Module.
-
-Handles loading and integration of MCP (Model Context Protocol) servers
-with the ADK Agent. Loads tools from remote MCP servers and converts
-them to ADK Tool definitions.
-"""
-
 import os
 import logging
 from typing import Dict, Any, List, Optional

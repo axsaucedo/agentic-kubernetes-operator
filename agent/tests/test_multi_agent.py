@@ -54,11 +54,11 @@ class MultiAgentCluster:
             env["PYTHONUNBUFFERED"] = "1"
 
             # Find repo root directory (where agent/ package is located)
-            repo_root = Path(__file__).parent.parent.parent
+            repo_root = Path(__file__).parent.parent
 
             try:
                 process = subprocess.Popen(
-                    ["python", "-m", "uvicorn", "agent.server:app",
+                    ["python", "-m", "uvicorn", "server:app",
                      "--host", "0.0.0.0", "--port", str(port)],
                     cwd=str(repo_root),
                     env=env,
@@ -72,7 +72,7 @@ class MultiAgentCluster:
             except Exception as e:
                 logger.error(f"Failed to start agent {agent_name}: {e}")
                 self.stop()
-                return False
+                raise
 
         # Wait for all servers to be ready
         if not self._wait_for_all_ready(timeout):

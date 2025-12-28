@@ -29,4 +29,4 @@ clean:
 
 # Run server locally
 run:
-	uv run python -m uvicorn agent.server:app --reload --host 0.0.0.0 --port 8000
+	uv run python -m uvicorn server:app --reload --host 0.0.0.0 --port 8000

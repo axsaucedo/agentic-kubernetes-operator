@@ -1,21 +1,3 @@
-"""
-Agentic Agent Runtime Server using Google's ADK patterns.
-
-This server loads configuration entirely from environment variables and
-exposes a long-running HTTP API for agent operations including:
-- Agent Card endpoint for A2A communication
-- Agent invocation with tool access
-- MCP tool integration
-- Peer agent A2A communication
-- Health check endpoints
-
-Architecture:
-- Uses environment variables for all configuration
-- Integrates with MCP servers for tool definitions
-- Calls model API (Ollama/vLLM) for reasoning
-- Coordinates with peer agents via A2A protocol
-"""
-
 import os
 import asyncio
 import logging
@@ -28,8 +10,8 @@ import httpx
 import uvicorn
 
 # Import local modules
-from agent.server.mcp_tools import MCPToolLoader
-from agent.server.a2a import A2AClient
+from server.mcp_tools import MCPToolLoader
+from server.a2a import A2AClient
 
 # Configure logging
 log_level = os.getenv("AGENT_LOG_LEVEL", "INFO")

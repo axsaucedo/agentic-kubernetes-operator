@@ -1,10 +1,3 @@
-"""
-Agent-to-Agent (A2A) Communication Module.
-
-Handles A2A communication between agents using the well-known
-Agent Card HTTP endpoints and ADK A2A protocol.
-"""
-
 import os
 import logging
 from typing import Dict, Any, List, Optional
