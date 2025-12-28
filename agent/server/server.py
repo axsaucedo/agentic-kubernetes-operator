@@ -1,315 +1,179 @@
-import os
-import asyncio
-import logging
+"""
+Agentic Runtime Server using Google ADK Native Multi-Agent Support
+
+This server exposes an agent using Google ADK's native A2A protocol.
+Each agent can:
+- Execute with LiteLlm model access
+- Use MCP tools via McpToolset
+- Coordinate with peer agents via RemoteA2aAgent
+"""
+
 import json
-from typing import Optional, Dict, Any, List
+import logging
+from typing import List
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-import httpx
-import uvicorn
+from pydantic_settings import BaseSettings
+from starlette.responses import JSONResponse
 
-# Import local modules
-from server.mcp_tools import MCPToolLoader
-from server.a2a import A2AClient
+from google.adk.agents.llm_agent import Agent
+from google.adk.a2a.utils.agent_to_a2a import to_a2a
+from google.adk.agents.remote_a2a_agent import RemoteA2aAgent
+from google.adk.models.lite_llm import LiteLlm
+from google.adk.tools.mcp_tool import McpToolset
+
+
+class AgentSettings(BaseSettings):
+    """Agent configuration from environment variables."""
+
+    # Required settings (no defaults)
+    agent_name: str
+    model_api_url: str
+    model_name: str
+
+    # Optional settings with defaults
+    agent_description: str = "Agent"
+    agent_instructions: str = "You are a helpful assistant."
+    server_host: str = "0.0.0.0"
+    server_port: int = 8000
+    agent_log_level: str = "INFO"
+
+    # Optional lists
+    mcp_servers: str = ""  # Comma-separated list
+    peer_agents: str = ""  # Comma-separated list
+
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
 
 # Configure logging
-log_level = os.getenv("AGENT_LOG_LEVEL", "INFO")
-logging.basicConfig(level=log_level)
+settings = AgentSettings()
+logging.basicConfig(level=settings.agent_log_level)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="Agentic Runtime",
-    description="Agent Runtime Server for Agentic Kubernetes Operator",
-    version="0.1.0"
-)
-
-# Global state
-agent_config: Optional[Dict[str, Any]] = None
-mcp_loader: Optional[MCPToolLoader] = None
-a2a_client: Optional[A2AClient] = None
+# Suppress uvicorn access logs
+logging.getLogger("uvicorn.access").disabled = True
 
 
-class AgentConfig(BaseModel):
-    """Agent configuration from environment"""
-    name: str
-    description: str
-    instructions: str
-    model_api_url: str
-    model_api_key: Optional[str] = None
-    mcp_servers: Dict[str, str] = {}
-    peer_agents: Dict[str, str] = {}
+def load_mcp_toolsets() -> List:
+    """Load MCP toolsets from environment variables."""
+    toolsets = []
+    mcp_names = [s.strip() for s in settings.mcp_servers.split(",") if s.strip()]
 
-
-class TaskRequest(BaseModel):
-    """Task invocation request"""
-    task: str
-    context: Optional[Dict[str, Any]] = None
-
-
-class TaskResponse(BaseModel):
-    """Task invocation response"""
-    result: str
-    reasoning: Optional[str] = None
-
-
-def load_config() -> Dict[str, Any]:
-    """Load configuration from environment variables"""
-    # Parse MCP servers: MCP_SERVERS="server1,server2" + MCP_SERVER_<NAME>_URL=...
-    mcp_servers = {}
-    mcp_names = [s.strip() for s in os.getenv("MCP_SERVERS", "").split(",") if s.strip()]
     for name in mcp_names:
         env_key = f"MCP_SERVER_{name.upper()}_URL"
+        # Get URL from settings by manually checking environment
+        import os
         url = os.getenv(env_key)
+
         if url:
-            mcp_servers[name] = url
+            try:
+                toolset = McpToolset(mcp_server_urls=[url])
+                toolsets.append(toolset)
+                logger.info(f"Loaded MCP toolset: {name} -> {url}")
+            except Exception as e:
+                logger.error(f"Failed to load MCP toolset {name}: {e}")
         else:
             logger.warning(f"MCP server {name} referenced but URL not found in {env_key}")
 
-    # Parse peer agents: PEER_AGENTS="agent1,agent2" + PEER_AGENT_<NAME>_CARD_URL=...
-    peer_agents = {}
-    peer_names = [a.strip() for a in os.getenv("PEER_AGENTS", "").split(",") if a.strip()]
+    return toolsets
+
+
+def load_peer_agents() -> List[RemoteA2aAgent]:
+    """Load peer agent configurations from environment variables."""
+    peer_agents = []
+    peer_names = [a.strip() for a in settings.peer_agents.split(",") if a.strip()]
+
+    import os
     for name in peer_names:
         # Convert name to valid env var format (uppercase, replace hyphens with underscores)
         env_name = name.upper().replace("-", "_")
         env_key = f"PEER_AGENT_{env_name}_CARD_URL"
-        url = os.getenv(env_key)
-        if url:
-            peer_agents[name] = url
-        else:
-            logger.warning(f"Peer agent {name} referenced but URL not found in {env_key}")
+        agent_card_url = os.getenv(env_key)
 
-    return {
-        "name": os.getenv("AGENT_NAME", "default-agent"),
-        "description": os.getenv("AGENT_DESCRIPTION", "Default agent"),
-        "instructions": os.getenv("AGENT_INSTRUCTIONS", "You are a helpful assistant."),
-        "model_api_url": os.getenv("MODEL_API_URL", "http://localhost:8000"),
-        "model_api_key": os.getenv("MODEL_API_KEY", ""),
-        "mcp_servers": mcp_servers,
-        "peer_agents": peer_agents,
-        "endpoint": os.getenv("AGENT_ENDPOINT", "http://localhost:8000"),
-    }
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize agent on startup"""
-    global agent_config, mcp_loader, a2a_client
-
-    logger.info("Starting Agentic Runtime Server...")
-    agent_config = load_config()
-
-    logger.info(f"Agent: {agent_config['name']}")
-    logger.info(f"Description: {agent_config['description']}")
-    logger.info(f"Model API: {agent_config['model_api_url']}")
-
-    if agent_config["mcp_servers"]:
-        logger.info(f"MCP Servers: {list(agent_config['mcp_servers'].keys())}")
-        mcp_loader = MCPToolLoader(agent_config["mcp_servers"])
-
-    if agent_config["peer_agents"]:
-        logger.info(f"Peer Agents: {list(agent_config['peer_agents'].keys())}")
-        a2a_client = A2AClient(
-            self_name=agent_config["name"],
-            peer_agents=agent_config["peer_agents"]
-        )
-
-    logger.info("Agent initialized successfully")
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "name": agent_config.get("name") if agent_config else "unknown"}
-
-
-@app.get("/ready")
-async def readiness_check():
-    """Readiness check endpoint"""
-    if not agent_config:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
-    return {"status": "ready", "name": agent_config["name"]}
-
-
-@app.get("/agent/card")
-async def get_agent_card() -> Dict[str, Any]:
-    """
-    Agent Card endpoint for A2A communication.
-
-    This endpoint is used by other agents to discover and communicate
-    with this agent via A2A (Agent-to-Agent) protocol.
-    """
-    if not agent_config:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
-
-    # Get available tools from MCP servers
-    tools = []
-    if mcp_loader:
-        try:
-            tools = await mcp_loader.list_tools()
-        except Exception as e:
-            logger.error(f"Failed to load tools: {e}")
-
-    return {
-        "name": agent_config["name"],
-        "description": agent_config["description"],
-        "endpoint": agent_config["endpoint"],
-        "tools": [{"name": t.get("name"), "description": t.get("description")} for t in tools],
-        "capabilities": {
-            "model_reasoning": True,
-            "tool_use": len(tools) > 0,
-            "agent_to_agent": len(agent_config["peer_agents"]) > 0,
-        }
-    }
-
-
-async def call_model(prompt: str, system: Optional[str] = None) -> Optional[str]:
-    """Call the model API with a prompt."""
-    if not agent_config:
-        return None
-
-    try:
-        headers = {}
-        if agent_config["model_api_key"]:
-            headers["Authorization"] = f"Bearer {agent_config['model_api_key']}"
-
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        # Get model name from environment or default
-        model_name = os.getenv("MODEL_NAME", "smollm2:135m")
-
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{agent_config['model_api_url']}/chat/completions",
-                json={
-                    "model": model_name,
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": 1000,
-                },
-                headers=headers,
+        if agent_card_url:
+            remote_agent = RemoteA2aAgent(
+                name=name.replace("-", "_"),
+                description=f"Delegate tasks to {name} agent",
+                agent_card=agent_card_url,
             )
+            peer_agents.append(remote_agent)
+            logger.info(f"Loaded peer agent: {name} -> {agent_card_url}")
+        else:
+            logger.warning(f"Peer agent {name} referenced but card URL not found in {env_key}")
 
-            if response.status_code == 200:
-                result = response.json()
-                return result["choices"][0]["message"]["content"]
-            else:
-                logger.error(f"Model API error: {response.status_code}")
-                return None
-    except Exception as e:
-        logger.error(f"Error calling model: {e}")
-        return None
+    return peer_agents
 
 
-async def execute_with_reasoning(task: str) -> str:
-    """Execute a task with model reasoning and tool use."""
-    if not agent_config:
-        return "Error: Agent not configured"
+def create_agent() -> Agent:
+    """Create and configure the agent using Google ADK.
 
-    logger.info(f"Executing task: {task}")
-
-    # Build system prompt with tools and instructions
-    system_prompt = agent_config["instructions"]
-
-    if mcp_loader:
-        try:
-            tools = await mcp_loader.list_tools()
-            if tools:
-                tool_descriptions = "\n".join([
-                    f"- {t['name']}: {t['description']}"
-                    for t in tools
-                ])
-                system_prompt += f"\n\nAvailable tools:\n{tool_descriptions}"
-        except Exception as e:
-            logger.error(f"Failed to list tools: {e}")
-
-    # Add peer agent information if available
-    if agent_config["peer_agents"] and a2a_client:
-        peer_info = "\n\nYou can delegate tasks to peer agents:\n"
-        for peer_name in agent_config["peer_agents"].keys():
-            peer_info += f"- {peer_name}\n"
-        system_prompt += peer_info
-
-    logger.debug(f"System prompt:\n{system_prompt}")
-
-    # Call model for reasoning
-    logger.info("Calling model for reasoning...")
-    response = await call_model(task, system_prompt)
-
-    if response:
-        logger.info(f"Model response received ({len(response)} chars)")
-        return response
-    else:
-        return "Error: Failed to get response from model"
-
-
-@app.post("/agent/invoke")
-async def invoke_agent(request: TaskRequest) -> TaskResponse:
+    Loads all sub-agents first before creating the main agent to ensure
+    the agent is initialized with complete configuration.
     """
-    Invoke the agent with a task.
+    logger.info(f"Creating agent: {settings.agent_name}")
+    logger.info(f"Description: {settings.agent_description}")
+    logger.info(f"Model API: {settings.model_api_url}")
+    logger.info(f"Model: {settings.model_name}")
 
-    The agent will:
-    1. Load available tools from MCP servers
-    2. Call the model with the task
-    3. Optionally delegate to peer agents
-    4. Return reasoning and result
-    """
-    if not agent_config:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
+    # Initialize LiteLlm for model access
+    llm = LiteLlm(
+        model=settings.model_name,
+        api_base=settings.model_api_url,
+    )
 
-    try:
-        result = await execute_with_reasoning(request.task)
-        return TaskResponse(result=result)
-    except Exception as e:
-        logger.error(f"Error invoking agent: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Load MCP toolsets - pass directly to agent
+    mcp_toolsets = []
+    if settings.mcp_servers:
+        logger.info(f"Loading MCP toolsets from: {settings.mcp_servers}")
+        mcp_toolsets = load_mcp_toolsets()
+        logger.info(f"Loaded {len(mcp_toolsets)} MCP toolsets")
 
+    # Load peer agents BEFORE creating the main agent
+    sub_agents = []
+    if settings.peer_agents:
+        logger.info(f"Loading peer agents from: {settings.peer_agents}")
+        sub_agents = load_peer_agents()
+        logger.info(f"Loaded {len(sub_agents)} peer agents")
 
-@app.post("/tools/execute")
-async def execute_tool(request: Dict[str, Any]):
-    """
-    Execute a tool on this agent.
+    # Create agent with all configuration at once
+    # Pass MCP toolsets directly - ADK handles empty list gracefully
+    # Replace hyphens with underscores in agent name (ADK requires valid Python identifiers)
+    agent = Agent(
+        name=settings.agent_name.replace("-", "_"),
+        model=llm,
+        instruction=settings.agent_instructions,
+        tools=mcp_toolsets,
+        sub_agents=sub_agents,
+    )
 
-    Request format:
-    {
-        "tool_name": "math.add",
-        "arguments": {"a": 2, "b": 3}
-    }
-    """
-    if not agent_config or not mcp_loader:
-        raise HTTPException(status_code=503, detail="Agent not initialized or no tools available")
-
-    try:
-        tool_name = request.get("tool_name")
-        arguments = request.get("arguments", {})
-
-        logger.info(f"Executing tool: {tool_name} with args {arguments}")
-
-        result = await mcp_loader.execute_tool(tool_name, arguments)
-        return {"result": result}
-    except Exception as e:
-        logger.error(f"Error executing tool: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    logger.info("Agent created successfully")
+    return agent
 
 
-@app.get("/metrics")
-async def get_metrics():
-    """Get agent metrics (placeholder for monitoring integration)"""
-    if not agent_config:
-        raise HTTPException(status_code=503, detail="Agent not initialized")
+# Create the agent and expose it via A2A
+agent = create_agent()
+app = to_a2a(agent)
 
-    return {
-        "agent_name": agent_config["name"],
-        "mcp_servers_count": len(agent_config["mcp_servers"]),
-        "peer_agents_count": len(agent_config["peer_agents"]),
-        "model_api_url": agent_config["model_api_url"],
-    }
+# Add Kubernetes health check endpoints directly to Starlette app
+@app.route("/health")
+async def health(request):
+    """Health check endpoint for Kubernetes liveness probes."""
+    return JSONResponse({"status": "healthy", "name": settings.agent_name})
+
+@app.route("/ready")
+async def ready(request):
+    """Readiness check endpoint for Kubernetes readiness probes."""
+    return JSONResponse({"status": "ready", "name": settings.agent_name})
 
 
 if __name__ == "__main__":
-    host = os.getenv("SERVER_HOST", "0.0.0.0")
-    port = int(os.getenv("SERVER_PORT", os.getenv("PORT", "8000")))
-    uvicorn.run(app, host=host, port=port, log_level=log_level.lower())
+    import uvicorn
+
+    logger.info(f"Starting Agentic Runtime Server on {settings.server_host}:{settings.server_port}")
+    uvicorn.run(
+        app,
+        host=settings.server_host,
+        port=settings.server_port,
+        log_level=settings.agent_log_level.lower()
+    )

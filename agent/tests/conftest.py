@@ -33,7 +33,7 @@ class AgentServer:
         self.process = None
         self.url = f"http://localhost:{port}"
 
-    def start(self, timeout: int = 30) -> bool:
+    def start(self, timeout: int = 10) -> bool:
         """Start the server as a subprocess.
 
         Args:
@@ -54,7 +54,7 @@ class AgentServer:
 
         try:
             self.process = subprocess.Popen(
-                ["python", "-m", "uvicorn", "server:app",
+                ["python", "-m", "uvicorn", "server.server:app",
                  "--host", "0.0.0.0", "--port", str(self.port)],
                 cwd=str(repo_root),
                 env=env,
