@@ -11,9 +11,11 @@ This test validates:
 import logging
 import pytest
 import httpx
-from google.adk.agents.remote_a2a_agent import AGENT_CARD_WELL_KNOWN_PATH
 
 logger = logging.getLogger(__name__)
+
+# A2A discovery endpoint path
+AGENT_CARD_WELL_KNOWN_PATH = "/.well-known/agent"
 
 
 @pytest.mark.asyncio

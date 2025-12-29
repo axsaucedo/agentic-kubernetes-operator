@@ -1,11 +1,12 @@
 """
-Integration test for multi-agent coordination using Google ADK A2A.
+Integration test for multi-agent coordination using custom A2A protocol.
 
 This test validates:
 - Multiple agents can run simultaneously
 - Agents can be discovered and are ready
 - Agents actually communicate with each other via A2A protocol
 - Agent-to-agent delegation works correctly
+- Memory events are tracked for coordination verification
 """
 
 import os
@@ -14,22 +15,25 @@ from typing import Dict
 
 import pytest
 import httpx
-from google.adk.agents.remote_a2a_agent import AGENT_CARD_WELL_KNOWN_PATH
 
 logger = logging.getLogger(__name__)
+
+# A2A discovery endpoint path
+AGENT_CARD_WELL_KNOWN_PATH = "/.well-known/agent"
 
 
 @pytest.mark.asyncio
 async def test_multi_agent_cluster_startup(multi_agent_cluster):
     """Test that all agents in the cluster start successfully."""
-    print("test starting")
+    logger.info("Testing multi-agent cluster startup")
     async with httpx.AsyncClient() as client:
-        print(f"running test across {multi_agent_cluster.urls.items()}")
+        logger.info(f"Testing agents: {list(multi_agent_cluster.urls.keys())}")
         for agent_name, url in multi_agent_cluster.urls.items():
-            print(f"checking {agent_name} {url}")
             response = await client.get(f"{url}/health")
             assert response.status_code == 200, f"{agent_name} health check failed"
-            logger.info(f"{agent_name} is healthy")
+            data = response.json()
+            assert data["status"] == "healthy"
+            logger.info(f"✓ {agent_name} is healthy")
 
 
 @pytest.mark.asyncio
