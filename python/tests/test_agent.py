@@ -148,11 +148,10 @@ class TestAgentMessageProcessing:
 
         # Mock LLM to return a fixed response
         mock_llm = AsyncMock(spec=LiteLLM)
-        mock_response = ModelResponse(
-            content="Test response",
-            finish_reason="stop"
-        )
-        mock_llm.chat_completion.return_value = mock_response
+        mock_response = {
+            "choices": [{"message": {"content": "Test response"}}]
+        }
+        mock_llm.complete.return_value = mock_response
 
         memory = LocalMemory()
         agent = Agent(
@@ -165,7 +164,10 @@ class TestAgentMessageProcessing:
 
         # Process a message
         session_id = await memory.create_session("agent", "user")
-        response = await agent.process_message("Hello", session_id)
+        response_chunks = []
+        async for chunk in agent.process_message("Hello", session_id):
+            response_chunks.append(chunk)
+        response = "".join(response_chunks)
 
         # Verify response
         assert response == "Test response"
@@ -206,7 +208,7 @@ class TestAgentMessageProcessing:
         await memory.add_event(session_id, event2)
 
         # Build context
-        context = await agent._build_context(session_id)
+        context = await memory.build_conversation_context(session_id)
 
         assert "First message" in context
         assert "First response" in context
@@ -262,7 +264,7 @@ class TestAgentCard:
         card = agent.get_agent_card("http://localhost:8000")
 
         # Verify delegation capability is present
-        assert "agent_delegation" in card.capabilities
+        assert "task_delegation" in card.capabilities
         logger.info("✓ Agent card shows delegation capability")
 
 
@@ -306,6 +308,8 @@ class TestServerEndpoints:
         try:
             mock_llm = Mock(spec=LiteLLM)
             mock_agent = Mock(spec=Agent)
+            mock_agent.name = "test-agent"
+            mock_agent.description = "Test Agent"
 
             server = AgentServer(agent=mock_agent)
             assert server.agent is not None
@@ -332,7 +336,7 @@ class TestRemoteAgent:
         )
 
         assert remote_agent.name == "worker-agent"
-        assert remote_agent.agent_card_url == "http://localhost:8001/.well-known/agent"
+        assert remote_agent.card_url == "http://localhost:8001/.well-known/agent"
         logger.info("✓ RemoteAgent created")
 
     @pytest.mark.asyncio
