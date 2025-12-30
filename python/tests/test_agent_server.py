@@ -1,8 +1,8 @@
 """
-End-to-end integration tests for Agent server.
+Consolidated Agent Server E2E tests.
 
 Tests the actual Agent server running with HTTP client communication.
-Uses subprocess to start server and HTTP calls to test endpoints.
+Includes single agent, multi-agent, and delegation scenarios.
 Requires Ollama running locally with smollm2:135m model.
 """
 
@@ -13,28 +13,47 @@ import logging
 import json
 from multiprocessing import Process
 
-from agent.server import AgentServer, AgentServerSettings, create_agent_server
-from agent.client import Agent
-from agent.memory import LocalMemory
-from modelapi.client import ModelAPI
+from agent.server import AgentServerSettings, create_agent_server
+from agent.client import RemoteAgent
 
 logger = logging.getLogger(__name__)
 
 
-def run_agent_server(port: int, model_url: str, model_name: str, agent_name: str):
-    """Run agent server in subprocess with debug memory endpoints enabled."""
+def run_agent_server(
+    port: int,
+    model_url: str,
+    model_name: str,
+    agent_name: str,
+    instructions: str = "You are a helpful assistant. Be brief.",
+    sub_agents_config: str = ""
+):
+    """Run agent server in subprocess with debug endpoints enabled."""
     settings = AgentServerSettings(
         agent_name=agent_name,
-        agent_description=f"Test Agent: {agent_name}",
-        agent_instructions="You are a helpful test assistant. Keep responses very brief (one sentence max).",
+        agent_description=f"Agent: {agent_name}",
+        agent_instructions=instructions,
         agent_port=port,
         model_api_url=model_url,
         model_name=model_name,
         agent_log_level="WARNING",
-        agent_debug_memory_endpoints=True  # Enable for testing
+        agent_debug_memory_endpoints=True,
+        agent_sub_agents=sub_agents_config
     )
     server = create_agent_server(settings)
     server.run()
+
+
+def wait_for_server(url: str, timeout: int = 30) -> bool:
+    """Wait for server to be ready."""
+    for _ in range(timeout * 2):
+        try:
+            response = httpx.get(f"{url}/ready", timeout=2.0)
+            if response.status_code == 200:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
 
 
 @pytest.fixture(scope="module")
@@ -48,300 +67,387 @@ def ollama_available():
 
 
 @pytest.fixture(scope="module")
-def agent_server_process(ollama_available):
-    """Fixture that starts agent server in subprocess."""
+def single_agent_server(ollama_available):
+    """Fixture that starts a single agent server."""
     if not ollama_available:
-        pytest.skip("Ollama not available - skipping end-to-end agent tests")
+        pytest.skip("Ollama not available")
     
     port = 8060
-    model_url = "http://localhost:11434"
-    model_name = "smollm2:135m"
-    agent_name = "test-agent"
-    
     process = Process(
         target=run_agent_server,
-        args=(port, model_url, model_name, agent_name)
+        args=(port, "http://localhost:11434", "smollm2:135m", "test-agent")
     )
     process.start()
     
-    # Wait for server to be ready (may take longer due to model loading)
-    ready = False
-    for _ in range(60):  # 30 seconds max
-        try:
-            response = httpx.get(f"http://localhost:{port}/ready", timeout=2.0)
-            if response.status_code == 200:
-                ready = True
-                break
-        except Exception:
-            pass
-        time.sleep(0.5)
-    
-    if not ready:
+    if not wait_for_server(f"http://localhost:{port}"):
         process.terminate()
         process.join(timeout=5)
-        pytest.fail("Agent server did not start in time")
+        pytest.fail("Agent server did not start")
     
-    yield {"url": f"http://localhost:{port}", "port": port, "name": agent_name}
+    yield {"url": f"http://localhost:{port}", "name": "test-agent"}
     
     process.terminate()
     process.join(timeout=5)
 
 
-class TestAgentServerHealthEndpoints:
-    """Tests for agent server health endpoints."""
+@pytest.fixture(scope="module")
+def multi_agent_cluster(ollama_available):
+    """Fixture that starts coordinator + 2 worker agents."""
+    if not ollama_available:
+        pytest.skip("Ollama not available")
     
-    def test_health_endpoint(self, agent_server_process):
-        """Test /health returns healthy status."""
-        response = httpx.get(f"{agent_server_process['url']}/health")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "healthy"
-        assert data["name"] == agent_server_process["name"]
-        assert "timestamp" in data
-        logger.info("✓ Health endpoint works correctly")
+    model_url = "http://localhost:11434"
+    model_name = "smollm2:135m"
     
-    def test_ready_endpoint(self, agent_server_process):
-        """Test /ready returns ready status."""
-        response = httpx.get(f"{agent_server_process['url']}/ready")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ready"
-        assert data["name"] == agent_server_process["name"]
-        logger.info("✓ Ready endpoint works correctly")
+    processes = []
+    agents = []
+    
+    # Start workers first
+    for i, (name, port) in enumerate([("worker-1", 8070), ("worker-2", 8071)]):
+        p = Process(
+            target=run_agent_server,
+            args=(port, model_url, model_name, name, f"You are {name}. Always mention your name in responses. Be brief.")
+        )
+        p.start()
+        processes.append(p)
+        agents.append({"name": name, "port": port, "url": f"http://localhost:{port}"})
+    
+    # Wait for workers
+    for agent in agents:
+        if not wait_for_server(agent["url"]):
+            for p in processes:
+                p.terminate()
+                p.join(timeout=5)
+            pytest.fail(f"Worker {agent['name']} did not start")
+    
+    # Start coordinator with sub-agents
+    coord_port = 8072
+    sub_agents_config = "worker-1:http://localhost:8070,worker-2:http://localhost:8071"
+    coord_process = Process(
+        target=run_agent_server,
+        args=(coord_port, model_url, model_name, "coordinator", "You are the coordinator.", sub_agents_config)
+    )
+    coord_process.start()
+    processes.append(coord_process)
+    
+    coord_url = f"http://localhost:{coord_port}"
+    if not wait_for_server(coord_url):
+        for p in processes:
+            p.terminate()
+            p.join(timeout=5)
+        pytest.fail("Coordinator did not start")
+    
+    agents.append({"name": "coordinator", "port": coord_port, "url": coord_url})
+    
+    yield {
+        "agents": agents,
+        "urls": {a["name"]: a["url"] for a in agents}
+    }
+    
+    for p in processes:
+        p.terminate()
+        p.join(timeout=5)
 
 
-class TestAgentCardEndpoint:
-    """Tests for A2A agent card endpoint."""
+class TestSingleAgentServer:
+    """Tests for single agent server functionality."""
     
-    def test_agent_card_endpoint(self, agent_server_process):
-        """Test /.well-known/agent returns valid agent card."""
-        response = httpx.get(f"{agent_server_process['url']}/.well-known/agent")
-        assert response.status_code == 200
+    def test_server_health_discovery_and_invocation(self, single_agent_server):
+        """Test complete single agent workflow: health, discovery, invocation, memory."""
+        url = single_agent_server["url"]
         
-        card = response.json()
-        assert card["name"] == agent_server_process["name"]
-        assert "description" in card
-        assert "url" in card
-        assert "capabilities" in card
+        # 1. Health and Ready endpoints
+        health = httpx.get(f"{url}/health").json()
+        assert health["status"] == "healthy"
+        assert health["name"] == "test-agent"
+        
+        ready = httpx.get(f"{url}/ready").json()
+        assert ready["status"] == "ready"
+        
+        # 2. Agent card discovery
+        card = httpx.get(f"{url}/.well-known/agent").json()
+        assert card["name"] == "test-agent"
         assert "message_processing" in card["capabilities"]
-        logger.info("✓ Agent card endpoint works correctly")
-    
-    def test_agent_card_structure_compliant(self, agent_server_process):
-        """Test agent card has A2A-compliant structure."""
-        response = httpx.get(f"{agent_server_process['url']}/.well-known/agent")
-        card = response.json()
+        assert "skills" in card
         
-        # Required A2A fields
-        required_fields = ["name", "description", "url", "skills", "capabilities"]
-        for field in required_fields:
-            assert field in card, f"Missing required field: {field}"
-        
-        # Skills and capabilities should be lists
-        assert isinstance(card["skills"], list)
-        assert isinstance(card["capabilities"], list)
-        logger.info("✓ Agent card is A2A-compliant")
-
-
-class TestAgentInvocation:
-    """Tests for agent task invocation."""
-    
-    def test_invoke_simple_task(self, agent_server_process):
-        """Test /agent/invoke processes a simple task."""
-        response = httpx.post(
-            f"{agent_server_process['url']}/agent/invoke",
-            json={"task": "Say hello"},
-            timeout=60.0  # LLM may be slow
-        )
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "response" in data
-        assert data["status"] == "completed"
-        assert len(data["response"]) > 0
-        logger.info(f"✓ Simple task completed: {data['response'][:50]}...")
-    
-    def test_invoke_returns_meaningful_response(self, agent_server_process):
-        """Test that agent actually processes the task and returns a response."""
-        response = httpx.post(
-            f"{agent_server_process['url']}/agent/invoke",
-            json={"task": "Say the word 'hello' in your response."},
+        # 3. Invoke agent
+        invoke_resp = httpx.post(
+            f"{url}/agent/invoke",
+            json={"task": "Say hello briefly"},
             timeout=60.0
         )
-        assert response.status_code == 200
+        assert invoke_resp.status_code == 200
+        invoke_data = invoke_resp.json()
+        assert invoke_data["status"] == "completed"
+        assert len(invoke_data["response"]) > 0
         
-        data = response.json()
-        # The response should be non-empty (LLM actually processed it)
-        assert len(data["response"]) > 5
-        logger.info(f"✓ Agent provides meaningful response: {data['response'][:50]}...")
-    
-    def test_invoke_handles_complex_query(self, agent_server_process):
-        """Test agent handles a more complex query."""
-        response = httpx.post(
-            f"{agent_server_process['url']}/agent/invoke",
-            json={"task": "List three colors. Be brief."},
-            timeout=60.0
-        )
-        assert response.status_code == 200
+        # 4. Verify memory events
+        memory = httpx.get(f"{url}/memory/events").json()
+        assert memory["agent"] == "test-agent"
+        assert memory["total"] >= 2  # user_message + agent_response
         
-        data = response.json()
-        assert len(data["response"]) > 10
-        logger.info("✓ Agent handles complex query")
-
-
-class TestOpenAIChatCompletions:
-    """Tests for OpenAI-compatible chat completions endpoint."""
+        event_types = [e["event_type"] for e in memory["events"]]
+        assert "user_message" in event_types
+        assert "agent_response" in event_types
+        
+        logger.info("✓ Single agent workflow complete")
     
-    def test_non_streaming_completion(self, agent_server_process):
-        """Test non-streaming /v1/chat/completions."""
+    def test_chat_completions_non_streaming(self, single_agent_server):
+        """Test OpenAI-compatible chat completions (non-streaming)."""
+        url = single_agent_server["url"]
+        
         response = httpx.post(
-            f"{agent_server_process['url']}/v1/chat/completions",
+            f"{url}/v1/chat/completions",
             json={
                 "model": "test-agent",
-                "messages": [
-                    {"role": "user", "content": "Say 'hello world'"}
-                ],
+                "messages": [{"role": "user", "content": "Say OK"}],
                 "stream": False
             },
             timeout=60.0
         )
-        assert response.status_code == 200
         
+        assert response.status_code == 200
         data = response.json()
+        
+        # Verify OpenAI format
+        assert data["object"] == "chat.completion"
+        assert data["id"].startswith("chatcmpl-")
         assert "choices" in data
         assert len(data["choices"]) > 0
-        assert "message" in data["choices"][0]
         assert data["choices"][0]["message"]["role"] == "assistant"
         assert len(data["choices"][0]["message"]["content"]) > 0
-        logger.info("✓ Non-streaming completion works")
+        assert data["choices"][0]["finish_reason"] == "stop"
+        
+        logger.info("✓ Non-streaming chat completions work")
     
-    def test_chat_completion_response_format(self, agent_server_process):
-        """Test chat completion response has correct OpenAI format."""
-        response = httpx.post(
-            f"{agent_server_process['url']}/v1/chat/completions",
-            json={
-                "model": "test-agent",
-                "messages": [
-                    {"role": "user", "content": "Hi"}
-                ],
-                "stream": False
-            },
-            timeout=60.0
-        )
-        assert response.status_code == 200
+    def test_chat_completions_streaming(self, single_agent_server):
+        """Test OpenAI-compatible chat completions (streaming)."""
+        url = single_agent_server["url"]
         
-        data = response.json()
-        
-        # Check required fields
-        assert "id" in data
-        assert data["id"].startswith("chatcmpl-")
-        assert "object" in data
-        assert data["object"] == "chat.completion"
-        assert "created" in data
-        assert "model" in data
-        assert "choices" in data
-        assert "usage" in data
-        
-        # Check choice structure
-        choice = data["choices"][0]
-        assert "index" in choice
-        assert "message" in choice
-        assert "finish_reason" in choice
-        logger.info("✓ Chat completion response format is correct")
-    
-    def test_streaming_completion(self, agent_server_process):
-        """Test streaming /v1/chat/completions with SSE."""
         with httpx.stream(
             "POST",
-            f"{agent_server_process['url']}/v1/chat/completions",
+            f"{url}/v1/chat/completions",
             json={
                 "model": "test-agent",
-                "messages": [
-                    {"role": "user", "content": "Count from 1 to 3"}
-                ],
+                "messages": [{"role": "user", "content": "Count 1 2 3"}],
                 "stream": True
             },
             timeout=60.0
         ) as response:
             assert response.status_code == 200
-            content_type = response.headers.get("content-type", "")
-            assert "text/event-stream" in content_type
+            assert "text/event-stream" in response.headers.get("content-type", "")
             
             chunks = []
-            for line in response.iter_lines():
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str != "[DONE]":
-                        chunks.append(data_str)
-            
-            assert len(chunks) > 0
-            logger.info(f"✓ Streaming completion works ({len(chunks)} chunks)")
-    
-    def test_streaming_completion_format(self, agent_server_process):
-        """Test streaming response chunks have correct format."""
-        with httpx.stream(
-            "POST",
-            f"{agent_server_process['url']}/v1/chat/completions",
-            json={
-                "model": "test-agent",
-                "messages": [
-                    {"role": "user", "content": "Say OK"}
-                ],
-                "stream": True
-            },
-            timeout=60.0
-        ) as response:
-            assert response.status_code == 200
-            
             found_done = False
+            
             for line in response.iter_lines():
                 if line.startswith("data: "):
                     data_str = line[6:]
                     if data_str == "[DONE]":
                         found_done = True
-                        continue
-                    
-                    # Parse and verify chunk format
-                    # Note: Response may use single quotes, handle that
-                    try:
-                        chunk = json.loads(data_str.replace("'", '"').replace("None", "null"))
-                        assert "id" in chunk
-                        assert "object" in chunk
-                        assert chunk["object"] == "chat.completion.chunk"
-                        assert "choices" in chunk
-                    except json.JSONDecodeError:
-                        # Some chunks may not be valid JSON, that's okay
-                        pass
+                    else:
+                        chunks.append(data_str)
             
-            assert found_done, "Stream should end with [DONE]"
-            logger.info("✓ Streaming chunk format is correct")
+            assert len(chunks) > 0
+            assert found_done
+        
+        logger.info("✓ Streaming chat completions work")
 
 
-class TestAgentServerErrors:
-    """Tests for error handling."""
+class TestMultiAgentCluster:
+    """Tests for multi-agent cluster functionality."""
     
-    def test_invoke_empty_task(self, agent_server_process):
-        """Test /agent/invoke handles empty task."""
-        response = httpx.post(
-            f"{agent_server_process['url']}/agent/invoke",
-            json={"task": ""},
-            timeout=30.0
-        )
-        # Should still return 200 (agent processes empty input)
-        assert response.status_code in [200, 400]
+    def test_all_agents_discovery(self, multi_agent_cluster):
+        """Test all agents in cluster are discoverable."""
+        for name, url in multi_agent_cluster["urls"].items():
+            # Health
+            health = httpx.get(f"{url}/health").json()
+            assert health["status"] == "healthy"
+            assert health["name"] == name
+            
+            # Agent card
+            card = httpx.get(f"{url}/.well-known/agent").json()
+            assert card["name"] == name
+            assert "message_processing" in card["capabilities"]
+        
+        # Coordinator should have delegation capability
+        coord_card = httpx.get(f"{multi_agent_cluster['urls']['coordinator']}/.well-known/agent").json()
+        assert "task_delegation" in coord_card["capabilities"]
+        
+        logger.info("✓ All agents discoverable")
     
-    def test_chat_completion_missing_messages(self, agent_server_process):
-        """Test /v1/chat/completions handles missing messages."""
+    def test_agents_process_independently_with_memory(self, multi_agent_cluster):
+        """Test each agent processes tasks and records in memory."""
+        for name, url in multi_agent_cluster["urls"].items():
+            # Send unique task
+            task_id = f"TASK_{name}_{int(time.time())}"
+            
+            resp = httpx.post(
+                f"{url}/agent/invoke",
+                json={"task": f"Process task {task_id}. Be brief."},
+                timeout=60.0
+            )
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "completed"
+            
+            # Verify memory
+            memory = httpx.get(f"{url}/memory/events").json()
+            user_msgs = [e for e in memory["events"] if e["event_type"] == "user_message"]
+            
+            # Task should be in memory
+            found = any(task_id in str(e["content"]) for e in user_msgs)
+            assert found, f"Task not found in {name}'s memory"
+        
+        logger.info("✓ All agents process independently with memory")
+    
+    def test_delegation_via_chat_completions(self, multi_agent_cluster):
+        """Test delegation using chat completions with role: delegate."""
+        coord_url = multi_agent_cluster["urls"]["coordinator"]
+        worker_url = multi_agent_cluster["urls"]["worker-1"]
+        
+        # Get worker's initial event count
+        initial_memory = httpx.get(f"{worker_url}/memory/events").json()
+        initial_count = initial_memory["total"]
+        
+        # Delegate via chat completions
+        task_id = f"DELEGATE_{int(time.time())}"
         response = httpx.post(
-            f"{agent_server_process['url']}/v1/chat/completions",
+            f"{coord_url}/v1/chat/completions",
             json={
-                "model": "test-agent",
-                "stream": False
+                "model": "coordinator",
+                "messages": [
+                    {"role": "delegate", "content": f"worker-1: Process delegation task {task_id}"}
+                ]
+            },
+            timeout=60.0
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "choices" in data
+        assert len(data["choices"][0]["message"]["content"]) > 0
+        
+        # Verify coordinator's memory has delegation events
+        coord_memory = httpx.get(f"{coord_url}/memory/events").json()
+        delegation_reqs = [e for e in coord_memory["events"] if e["event_type"] == "delegation_request"]
+        delegation_resps = [e for e in coord_memory["events"] if e["event_type"] == "delegation_response"]
+        
+        assert len(delegation_reqs) >= 1
+        assert len(delegation_resps) >= 1
+        assert any(task_id in str(e["content"]) for e in delegation_reqs)
+        
+        # Verify worker received the task
+        worker_memory = httpx.get(f"{worker_url}/memory/events").json()
+        assert worker_memory["total"] > initial_count
+        
+        new_events = worker_memory["events"][initial_count:]
+        user_msgs = [e for e in new_events if e["event_type"] == "user_message"]
+        assert any(task_id in str(e["content"]) for e in user_msgs)
+        
+        logger.info("✓ Delegation via chat completions works with memory verification")
+    
+    def test_delegation_to_both_workers(self, multi_agent_cluster):
+        """Test delegating to both workers and verify memory isolation."""
+        coord_url = multi_agent_cluster["urls"]["coordinator"]
+        
+        task1_id = f"W1_{int(time.time())}"
+        task2_id = f"W2_{int(time.time())}"
+        
+        # Delegate to worker-1
+        resp1 = httpx.post(
+            f"{coord_url}/v1/chat/completions",
+            json={"model": "coordinator", "messages": [{"role": "delegate", "content": f"worker-1: Task {task1_id}"}]},
+            timeout=60.0
+        )
+        assert resp1.status_code == 200
+        
+        # Delegate to worker-2
+        resp2 = httpx.post(
+            f"{coord_url}/v1/chat/completions",
+            json={"model": "coordinator", "messages": [{"role": "delegate", "content": f"worker-2: Task {task2_id}"}]},
+            timeout=60.0
+        )
+        assert resp2.status_code == 200
+        
+        # Verify each worker only has its task
+        w1_memory = httpx.get(f"{multi_agent_cluster['urls']['worker-1']}/memory/events").json()
+        w2_memory = httpx.get(f"{multi_agent_cluster['urls']['worker-2']}/memory/events").json()
+        
+        w1_content = " ".join(str(e["content"]) for e in w1_memory["events"])
+        w2_content = " ".join(str(e["content"]) for e in w2_memory["events"])
+        
+        assert task1_id in w1_content
+        assert task2_id not in w1_content  # Memory isolation
+        assert task2_id in w2_content
+        assert task1_id not in w2_content  # Memory isolation
+        
+        logger.info("✓ Delegation to both workers with memory isolation")
+    
+    @pytest.mark.asyncio
+    async def test_remote_agent_discovery_and_invocation(self, multi_agent_cluster):
+        """Test RemoteAgent can discover and invoke workers."""
+        worker_url = multi_agent_cluster["urls"]["worker-1"]
+        
+        remote = RemoteAgent(name="worker-1", card_url=worker_url)
+        
+        # Discover
+        card = await remote.discover()
+        assert card.name == "worker-1"
+        assert "message_processing" in card.capabilities
+        
+        # Invoke
+        response = await remote.invoke("Say hello from remote. Be brief.")
+        assert len(response) > 0
+        
+        await remote.close()
+        
+        logger.info("✓ RemoteAgent discovery and invocation work")
+
+
+class TestErrorHandling:
+    """Tests for error handling scenarios."""
+    
+    def test_delegation_to_nonexistent_agent(self, multi_agent_cluster):
+        """Test delegation to non-existent agent returns 404."""
+        coord_url = multi_agent_cluster["urls"]["coordinator"]
+        
+        response = httpx.post(
+            f"{coord_url}/v1/chat/completions",
+            json={
+                "model": "coordinator",
+                "messages": [{"role": "delegate", "content": "nonexistent: Some task"}]
             },
             timeout=30.0
         )
-        assert response.status_code in [400, 422, 500]
-    
-    def test_invalid_endpoint(self, agent_server_process):
-        """Test invalid endpoint returns 404."""
-        response = httpx.get(f"{agent_server_process['url']}/invalid/endpoint")
+        
         assert response.status_code == 404
+        logger.info("✓ Non-existent agent returns 404")
+    
+    def test_invalid_delegation_format(self, multi_agent_cluster):
+        """Test invalid delegation format returns 400."""
+        coord_url = multi_agent_cluster["urls"]["coordinator"]
+        
+        response = httpx.post(
+            f"{coord_url}/v1/chat/completions",
+            json={
+                "model": "coordinator",
+                "messages": [{"role": "delegate", "content": "no colon here"}]
+            },
+            timeout=30.0
+        )
+        
+        assert response.status_code == 400
+        logger.info("✓ Invalid delegation format returns 400")
+    
+    def test_missing_messages(self, single_agent_server):
+        """Test missing messages returns error."""
+        url = single_agent_server["url"]
+        
+        response = httpx.post(
+            f"{url}/v1/chat/completions",
+            json={"model": "test-agent", "stream": False},
+            timeout=30.0
+        )
+        
+        assert response.status_code in [400, 422]
+        logger.info("✓ Missing messages returns error")

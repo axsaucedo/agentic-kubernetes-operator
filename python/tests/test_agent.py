@@ -1,389 +1,264 @@
 """
-Integration tests for agent functionality and HTTP server.
+Consolidated Agent tests.
 
-Tests:
-- Agent creation with minimal config
-- Agent initialization with model_api and tools
-- Message processing and memory event tracking
-- Agent card generation with proper structure
-- RemoteAgent discovery from URL
-- Multi-agent setup with sub_agents
-- Server startup and health/ready checks
-- Agent card endpoint returns correct structure
+Tests Agent, RemoteAgent, AgentCard, LocalMemory, and ModelAPI functionality.
+Focuses on meaningful integration between components.
 """
 
-import os
 import pytest
-import httpx
-import asyncio
-import subprocess
-import time
-import json
 import logging
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock
+from typing import List, Dict
+
+from agent.client import Agent, RemoteAgent, AgentCard
+from agent.memory import LocalMemory
+from agent.server import AgentServer
+from modelapi.client import ModelAPI, LiteLLM
 
 logger = logging.getLogger(__name__)
 
 
-class TestAgentCreation:
-    """Tests for agent creation and initialization."""
-
-    @pytest.mark.asyncio
-    async def test_agent_creation_minimal_config(self):
-        """Test agent can be created with minimal configuration."""
-        from agent.client import Agent
-        from modelapi.client import LiteLLM
-
-        mock_llm = Mock(spec=LiteLLM)
-        agent = Agent(
-            name="test-agent",
-            description="Test Agent",
-            instructions="You are a test assistant.",
-            model_api=mock_llm
-        )
-
-        assert agent.name == "test-agent"
-        assert agent.description == "Test Agent"
-        assert agent.instructions == "You are a test assistant."
-        assert agent.model_api == mock_llm
-        logger.info("✓ Agent created with minimal config")
-
-    @pytest.mark.asyncio
-    async def test_agent_card_generation(self):
-        """Test agent generates correct card for A2A discovery."""
-        from agent.client import Agent
-        from modelapi.client import LiteLLM
-
-        mock_llm = Mock(spec=LiteLLM)
-        agent = Agent(
-            name="test-agent",
-            description="Test Agent",
-            instructions="You are a test assistant.",
-            model_api=mock_llm
-        )
-
-        card = agent.get_agent_card("http://localhost:8000")
-
-        assert card.name == "test-agent"
-        assert card.description == "Test Agent"
-        assert card.url == "http://localhost:8000"
-        assert isinstance(card.skills, list)
-        assert isinstance(card.capabilities, list)
-        assert "task_execution" in card.capabilities
-        logger.info("✓ Agent card generated correctly")
-
-    @pytest.mark.asyncio
-    async def test_agent_initialization(self):
-        """Test agent initialization discovers tools and sub-agents."""
-        from agent.client import Agent
-        from modelapi.client import LiteLLM
-
-        mock_llm = Mock(spec=LiteLLM)
-        agent = Agent(
-            name="test-agent",
-            description="Test Agent",
-            model_api=mock_llm
-        )
-
-        # Initialize should work (no-op method for API compatibility)
-        await agent.initialize()
-        assert agent is not None
-        logger.info("✓ Agent initialization works")
-
-
-class TestMemoryTracking:
-    """Tests for agent memory and event tracking."""
-
-    @pytest.mark.asyncio
-    async def test_memory_system_creation(self):
-        """Test memory system can be created."""
-        from agent.memory import LocalMemory
-
-        memory = LocalMemory()
-        assert memory is not None
-        logger.info("✓ Memory system created")
-
-    @pytest.mark.asyncio
-    async def test_session_creation(self):
-        """Test sessions can be created in memory."""
-        from agent.memory import LocalMemory
-
-        memory = LocalMemory()
-        session_id = await memory.create_session("test_app", "user_123")
-
-        assert session_id is not None
-        assert session_id.startswith("session_")
-        logger.info(f"✓ Session created: {session_id}")
-
-    @pytest.mark.asyncio
-    async def test_event_logging(self):
-        """Test events can be logged to session."""
-        from agent.memory import LocalMemory
-
-        memory = LocalMemory()
-        session_id = await memory.create_session("test_app", "user_123")
-
-        # Create and add event
-        event = memory.create_event("user_message", "Hello")
-        await memory.add_event(session_id, event)
-
-        # Retrieve events
-        events = await memory.get_session_events(session_id)
-        assert len(events) == 1
-        assert events[0].event_type == "user_message"
-        assert events[0].content == "Hello"
-        logger.info("✓ Events logged to memory correctly")
-
-
-class TestAgentMessageProcessing:
-    """Tests for agent message processing."""
-
-    @pytest.mark.asyncio
-    async def test_message_processing_creates_memory_events(self):
-        """Test message processing creates memory events."""
-        from agent.client import Agent
-        from agent.memory import LocalMemory
-        from modelapi.client import LiteLLM, ModelResponse
-
-        # Mock LLM to return a fixed response
-        mock_llm = AsyncMock(spec=LiteLLM)
-        mock_response = {
-            "choices": [{"message": {"content": "Test response"}}]
+class MockModelAPI(ModelAPI):
+    """Mock ModelAPI for testing."""
+    
+    def __init__(self, name: str = "mock"):
+        self.name = name
+        self.call_count = 0
+        self.model = "mock"
+        self.api_base = "mock://localhost"
+    
+    async def complete(self, messages: List[Dict]) -> Dict:
+        self.call_count += 1
+        user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
+        return {
+            "choices": [{
+                "message": {"content": f"[{self.name}] Response to: {user_msg}"}
+            }]
         }
-        mock_llm.complete.return_value = mock_response
+    
+    async def stream(self, messages: List[Dict]):
+        response = await self.complete(messages)
+        yield response["choices"][0]["message"]["content"]
+    
+    async def close(self):
+        pass
 
+
+class TestAgentCreationAndCard:
+    """Tests for Agent creation and AgentCard generation."""
+    
+    @pytest.mark.asyncio
+    async def test_agent_creation_and_card_generation(self):
+        """Test Agent can be created and generates valid AgentCard."""
+        mock_llm = MockModelAPI("test-agent")
         memory = LocalMemory()
+        
+        # Create agent with minimal config
         agent = Agent(
             name="test-agent",
-            description="Test Agent",
-            instructions="You are a helpful assistant.",
+            description="Test Agent Description",
+            instructions="You are a test assistant.",
             model_api=mock_llm,
             memory=memory
         )
+        
+        assert agent.name == "test-agent"
+        assert agent.description == "Test Agent Description"
+        assert agent.model_api == mock_llm
+        assert agent.memory == memory
+        
+        # Test AgentCard generation
+        card = agent.get_agent_card("http://localhost:8000")
+        
+        assert card.name == "test-agent"
+        assert card.description == "Test Agent Description"
+        assert card.url == "http://localhost:8000"
+        assert "message_processing" in card.capabilities
+        assert "task_execution" in card.capabilities
+        
+        # Test card serialization
+        card_dict = card.to_dict()
+        assert "name" in card_dict
+        assert "description" in card_dict
+        assert "url" in card_dict
+        assert "skills" in card_dict
+        assert "capabilities" in card_dict
+        
+        logger.info("✓ Agent creation and card generation work correctly")
+    
+    @pytest.mark.asyncio
+    async def test_agent_with_sub_agents(self):
+        """Test Agent with sub-agents has delegation capability."""
+        mock_llm = MockModelAPI("coordinator")
+        
+        # Create sub-agents
+        sub_agent1 = RemoteAgent(name="worker-1", card_url="http://localhost:8001")
+        sub_agent2 = RemoteAgent(name="worker-2", card_url="http://localhost:8002")
+        
+        agent = Agent(
+            name="coordinator",
+            model_api=mock_llm,
+            sub_agents=[sub_agent1, sub_agent2]
+        )
+        
+        assert len(agent.sub_agents) == 2
+        
+        # Card should indicate delegation capability
+        card = agent.get_agent_card("http://localhost:8000")
+        assert "task_delegation" in card.capabilities
+        
+        # Cleanup
+        await sub_agent1.close()
+        await sub_agent2.close()
+        
+        logger.info("✓ Agent with sub-agents works correctly")
 
-        # Process a message
-        session_id = await memory.create_session("agent", "user")
-        response_chunks = []
-        async for chunk in agent.process_message("Hello", session_id):
-            response_chunks.append(chunk)
-        response = "".join(response_chunks)
 
-        # Verify response
-        assert response == "Test response"
-
-        # Verify memory events were created
+class TestMemorySystem:
+    """Tests for LocalMemory functionality."""
+    
+    @pytest.mark.asyncio
+    async def test_memory_system_complete_workflow(self):
+        """Test complete memory workflow: sessions, events, context."""
+        memory = LocalMemory()
+        
+        # Create session
+        session_id = await memory.create_session("test_app", "test_user")
+        assert session_id is not None
+        
+        # List sessions
+        sessions = await memory.list_sessions()
+        assert session_id in sessions
+        
+        # Create and add events
+        event1 = memory.create_event("user_message", "Hello agent!")
+        event2 = memory.create_event("agent_response", "Hello user!")
+        event3 = memory.create_event("tool_call", {"tool": "calculator", "args": {"a": 1}})
+        
+        await memory.add_event(session_id, event1)
+        await memory.add_event(session_id, event2)
+        await memory.add_event(session_id, event3)
+        
+        # Get events
         events = await memory.get_session_events(session_id)
-        assert len(events) >= 2  # At least user message and response
+        assert len(events) == 3
+        assert events[0].event_type == "user_message"
+        assert events[0].content == "Hello agent!"
+        assert events[1].event_type == "agent_response"
+        assert events[2].event_type == "tool_call"
+        
+        # Build context
+        context = await memory.build_conversation_context(session_id)
+        assert "Hello agent!" in context
+        assert "Hello user!" in context
+        
+        logger.info("✓ Memory system complete workflow works correctly")
 
-        # Find event types
+
+class TestMessageProcessing:
+    """Tests for Agent message processing with memory."""
+    
+    @pytest.mark.asyncio
+    async def test_message_processing_creates_memory_events(self):
+        """Test that message processing creates appropriate memory events."""
+        mock_llm = MockModelAPI("processor")
+        memory = LocalMemory()
+        
+        agent = Agent(
+            name="processor",
+            instructions="Process messages.",
+            model_api=mock_llm,
+            memory=memory
+        )
+        
+        # Process a message
+        response_chunks = []
+        async for chunk in agent.process_message("Hello, process this!"):
+            response_chunks.append(chunk)
+        
+        response = "".join(response_chunks)
+        assert len(response) > 0
+        assert "processor" in response.lower()
+        
+        # Verify memory events were created
+        sessions = await memory.list_sessions()
+        assert len(sessions) >= 1
+        
+        session_id = sessions[-1]
+        events = await memory.get_session_events(session_id)
+        
+        # Should have user_message and agent_response
         event_types = [e.event_type for e in events]
         assert "user_message" in event_types
         assert "agent_response" in event_types
+        
+        # Verify content
+        user_event = next(e for e in events if e.event_type == "user_message")
+        assert "Hello, process this!" in user_event.content
+        
+        # Verify model was called
+        assert mock_llm.call_count >= 1
+        
+        logger.info("✓ Message processing with memory works correctly")
 
-        logger.info("✓ Message processing creates memory events")
 
-    @pytest.mark.asyncio
-    async def test_context_building(self):
-        """Test agent builds context from history."""
-        from agent.client import Agent
-        from agent.memory import LocalMemory
-        from modelapi.client import LiteLLM
-
-        mock_llm = Mock(spec=LiteLLM)
-        memory = LocalMemory()
-        agent = Agent(
-            name="test-agent",
-            model_api=mock_llm,
-            memory=memory
+class TestModelAPIClient:
+    """Tests for ModelAPI/LiteLLM client."""
+    
+    def test_model_api_creation(self):
+        """Test ModelAPI can be created with proper configuration."""
+        model_api = ModelAPI(
+            model="test-model",
+            api_base="http://localhost:11434"
         )
-
-        # Create session and add some events
-        session_id = await memory.create_session("agent", "user")
-
-        event1 = memory.create_event("user_message", "First message")
-        await memory.add_event(session_id, event1)
-
-        event2 = memory.create_event("agent_response", "First response")
-        await memory.add_event(session_id, event2)
-
-        # Build context
-        context = await memory.build_conversation_context(session_id)
-
-        assert "First message" in context
-        assert "First response" in context
-        logger.info("✓ Context building works correctly")
-
-
-class TestAgentCard:
-    """Tests for agent card/A2A discovery."""
-
-    @pytest.mark.asyncio
-    async def test_agent_card_structure(self):
-        """Test agent card has required fields."""
-        from agent.client import Agent, AgentCard
-        from modelapi.client import LiteLLM
-
-        mock_llm = Mock(spec=LiteLLM)
-        agent = Agent(
-            name="coordinator",
-            description="Coordinator Agent",
-            model_api=mock_llm
+        
+        assert model_api.model == "test-model"
+        assert model_api.api_base == "http://localhost:11434"
+        
+        # LiteLLM alias works
+        litellm = LiteLLM(
+            model="another-model",
+            api_base="http://localhost:8080"
         )
-
-        card = agent.get_agent_card("http://localhost:8000")
-
-        # Verify card structure
-        assert isinstance(card, AgentCard)
-        assert card.name == "coordinator"
-        assert card.description == "Coordinator Agent"
-        assert card.url == "http://localhost:8000"
-        assert hasattr(card, "skills")
-        assert hasattr(card, "capabilities")
-
-        logger.info("✓ Agent card has correct structure")
-
-    @pytest.mark.asyncio
-    async def test_agent_card_with_sub_agents(self):
-        """Test agent card shows agent delegation capability when sub-agents present."""
-        from agent.client import Agent, RemoteAgent
-        from modelapi.client import LiteLLM
-
-        mock_llm = Mock(spec=LiteLLM)
-
-        # Create remote agent mock
-        remote_agent = Mock(spec=RemoteAgent)
-        remote_agent.name = "worker"
-
-        agent = Agent(
-            name="coordinator",
-            model_api=mock_llm,
-            sub_agents=[remote_agent]
-        )
-
-        card = agent.get_agent_card("http://localhost:8000")
-
-        # Verify delegation capability is present
-        assert "task_delegation" in card.capabilities
-        logger.info("✓ Agent card shows delegation capability")
-
-
-class TestServerEndpoints:
-    """Tests for HTTP server endpoints."""
-
-    @pytest.mark.asyncio
-    async def test_agent_server_creation(self):
-        """Test AgentServer can be created."""
-
-        from agent.server import AgentServer
-        from agent.client import Agent
-        from modelapi.client import LiteLLM
-
-        # Set required env vars for test
-        # Setting env vars before running tests
-        os.environ["AGENT_NAME"] = "test-agent"
-        os.environ["MODEL_API_URL"] = "http://localhost:11434/v1"
-        os.environ["MODEL_NAME"] = "test-model"
-
-        try:
-            mock_llm = Mock(spec=LiteLLM)
-            mock_agent = Mock(spec=Agent)
-            mock_agent.name = "test-agent"
-            mock_agent.description = "Test Agent"
-
-            server = AgentServer(agent=mock_agent)
-            assert server.agent is not None
-            assert server.app is not None
-            logger.info("✓ AgentServer created successfully")
-        finally:
-            # Clean up
-            for key in ["AGENT_NAME", "MODEL_API_URL", "MODEL_NAME"]:
-                if key in os.environ:
-                    del os.environ[key]
+        
+        assert litellm.model == "another-model"
+        
+        logger.info("✓ ModelAPI creation works correctly")
 
 
 class TestRemoteAgent:
-    """Tests for remote agent functionality."""
-
+    """Tests for RemoteAgent functionality."""
+    
     @pytest.mark.asyncio
-    async def test_remote_agent_creation(self):
-        """Test RemoteAgent can be created."""
-        from agent.client import RemoteAgent
+    async def test_remote_agent_creation_and_close(self):
+        """Test RemoteAgent can be created and closed properly."""
+        remote = RemoteAgent(name="worker", card_url="http://localhost:8001")
+        
+        assert remote.name == "worker"
+        assert "localhost:8001" in remote.card_url
+        
+        # Close should not raise
+        await remote.close()
+        
+        logger.info("✓ RemoteAgent creation and close work correctly")
 
-        remote_agent = RemoteAgent(
-            name="worker-agent",
-            agent_card_url="http://localhost:8001/.well-known/agent"
+
+class TestAgentServer:
+    """Tests for AgentServer creation."""
+    
+    def test_agent_server_creation(self):
+        """Test AgentServer can be created with an Agent."""
+        mock_llm = MockModelAPI("server-agent")
+        
+        agent = Agent(
+            name="server-agent",
+            model_api=mock_llm
         )
-
-        assert remote_agent.name == "worker-agent"
-        assert remote_agent.card_url == "http://localhost:8001/.well-known/agent"
-        logger.info("✓ RemoteAgent created")
-
-    @pytest.mark.asyncio
-    async def test_remote_agent_close(self):
-        """Test RemoteAgent cleanup."""
-        from agent.client import RemoteAgent
-
-        remote_agent = RemoteAgent(
-            name="worker-agent",
-            agent_card_url="http://localhost:8001/.well-known/agent"
-        )
-
-        await remote_agent.close()
-        logger.info("✓ RemoteAgent closed successfully")
-
-
-class TestModelAPI:
-    """Tests for Model API client."""
-
-    @pytest.mark.asyncio
-    async def test_litellm_creation(self):
-        """Test LiteLLM client can be created."""
-        from modelapi.client import LiteLLM
-
-        client = LiteLLM(
-            model="test-model",
-            api_base="http://localhost:8000"
-        )
-
-        assert client.model == "test-model"
-        assert client.api_base == "http://localhost:8000"
-        logger.info("✓ LiteLLM client created")
-
-    @pytest.mark.asyncio
-    async def test_litellm_close(self):
-        """Test LiteLLM client cleanup."""
-        from modelapi.client import LiteLLM
-
-        client = LiteLLM(
-            model="test-model",
-            api_base="http://localhost:8000"
-        )
-
-        await client.close()
-        logger.info("✓ LiteLLM client closed successfully")
-
-    @pytest.mark.asyncio
-    async def test_model_message_creation(self):
-        """Test ModelMessage can be created."""
-        from modelapi.client import ModelMessage
-
-        msg = ModelMessage(role="user", content="Hello")
-
-        assert msg.role == "user"
-        assert msg.content == "Hello"
-        logger.info("✓ ModelMessage created")
-
-    @pytest.mark.asyncio
-    async def test_model_response_creation(self):
-        """Test ModelResponse can be created."""
-        from modelapi.client import ModelResponse
-
-        response = ModelResponse(
-            content="Test response",
-            finish_reason="stop"
-        )
-
-        assert response.content == "Test response"
-        assert response.finish_reason == "stop"
-        logger.info("✓ ModelResponse created")
+        
+        server = AgentServer(agent, port=9999)
+        
+        assert server.agent == agent
+        assert server.port == 9999
+        assert server.app is not None
+        
+        logger.info("✓ AgentServer creation works correctly")
