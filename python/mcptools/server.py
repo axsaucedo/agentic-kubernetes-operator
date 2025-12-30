@@ -7,9 +7,10 @@ Supports tool registration from environment variables safely.
 
 import json
 import logging
-from typing import Dict, Any, Callable, List, Optional
+from typing import Dict, Any, Callable, List, Optional, Literal
 from fastmcp import FastMCP
 import uvicorn
+from fastmcp.server.http import StarletteWithLifespan
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +18,10 @@ logger = logging.getLogger(__name__)
 class MCPServer:
     """Secure MCP server that hosts tools via FastMCP protocol."""
 
-    def __init__(self, port: int = None, tools: Dict[str, Callable] = None):
-        """Initialize MCP server.
-
-        Args:
-            port: Port to run server on (default: 8002)
-            tools: Dictionary of tool_name -> callable function
-        """
-        self.port = port or 8002
+    def __init__(self, host: str = "0.0.0.0", port: int = 8002, tools: Dict[str, Callable] = None):
+        """Initialize MCP server."""
+        self._host = host
+        self._port = port
         self.mcp = FastMCP("Dynamic MCP Server")
         self.tools_registry: Dict[str, Callable] = {}
 
@@ -32,7 +29,7 @@ class MCPServer:
         if tools:
             self.register_tools(tools)
 
-        logger.info(f"MCPServer initialized on port {self.port} with {len(self.tools_registry)} tools")
+        logger.info(f"MCPServer initialized on port {self._port} with {len(self.tools_registry)} tools")
 
     def register_tools(self, tools: Dict[str, Callable]):
         """Register multiple tools with the MCP server.
@@ -162,32 +159,14 @@ class MCPServer:
         """
         return list(self.tools_registry.keys())
 
-    def create_app(self):
-        """Create FastMCP ASGI app.
+    def create_app(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> StarletteWithLifespan:
+        """Create FastMCP ASGI app using the http_app."""
+        return self.mcp.http_app(transport=transport)
 
-        Returns:
-            ASGI application for FastMCP server
-        """
-        return self.mcp.create_app()
-
-    def run(self, host: str = "0.0.0.0"):
-        """Run the MCP server.
-
-        Args:
-            host: Host to bind to
-        """
-        logger.info(f"Starting MCP server on {host}:{self.port} with tools: {self.get_registered_tools()}")
-
-        try:
-            uvicorn.run(
-                self.create_app(),
-                host=host,
-                port=self.port,
-                log_level="info"
-            )
-        except Exception as e:
-            logger.error(f"Failed to start MCP server: {e}")
-            raise
+    def run(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> None:
+        """Run the MCP server through the FastMCP run command."""
+        logger.info(f"Starting MCP server on {self._host}:{self._port} with tools: {self.get_registered_tools()}")
+        self.mcp.run(host=self._host, port=self._port, transport=transport)
 
 
 def create_echo_tool():
@@ -238,5 +217,3 @@ def create_calculator_tools():
     }
 
 
-# Example usage (secure):
-# MCP_TOOLS_STRING='{"echo": {"type": "builtin"}, "calculator_add": {"type": "builtin"}}'

@@ -174,15 +174,6 @@ class LocalMemory:
         return events
 
     async def build_conversation_context(self, session_id: str, max_events: int = 20) -> str:
-        """Build conversation context from session events.
-
-        Args:
-            session_id: The session ID
-            max_events: Maximum number of recent events to include
-
-        Returns:
-            Formatted conversation context string
-        """
         events = await self.get_session_events(session_id, ["user_message", "agent_response"])
 
         # Get most recent events

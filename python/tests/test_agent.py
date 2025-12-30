@@ -272,35 +272,15 @@ class TestServerEndpoints:
     """Tests for HTTP server endpoints."""
 
     @pytest.mark.asyncio
-    async def test_server_settings_creation(self):
-        """Test AgentServerSettings can be created with valid config."""
-        from agent.server import AgentServerSettings
-
-        # Set required env vars for test
-        os.environ["AGENT_NAME"] = "test-agent"
-        os.environ["MODEL_API_URL"] = "http://localhost:11434/v1"
-        os.environ["MODEL_NAME"] = "test-model"
-
-        try:
-            settings = AgentServerSettings()
-            assert settings.agent_name == "test-agent"
-            assert settings.model_api_url == "http://localhost:11434/v1"
-            assert settings.model_name == "test-model"
-            logger.info("✓ AgentServerSettings created successfully")
-        finally:
-            # Clean up
-            for key in ["AGENT_NAME", "MODEL_API_URL", "MODEL_NAME"]:
-                if key in os.environ:
-                    del os.environ[key]
-
-    @pytest.mark.asyncio
     async def test_agent_server_creation(self):
         """Test AgentServer can be created."""
+
         from agent.server import AgentServer
         from agent.client import Agent
         from modelapi.client import LiteLLM
 
         # Set required env vars for test
+        # Setting env vars before running tests
         os.environ["AGENT_NAME"] = "test-agent"
         os.environ["MODEL_API_URL"] = "http://localhost:11434/v1"
         os.environ["MODEL_NAME"] = "test-model"

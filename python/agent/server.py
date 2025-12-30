@@ -279,52 +279,30 @@ class AgentServer:
 
 
 def create_agent_server(settings: AgentServerSettings = None) -> AgentServer:
-    """Factory function to create AgentServer from settings.
 
-    Similar to Google ADK pattern but without their dependencies.
-
-    Args:
-        settings: Server settings (loaded from env if not provided)
-
-    Returns:
-        AgentServer instance
-    """
     if not settings:
         settings = AgentServerSettings()
 
-    # Create model API
     model_api = ModelAPI(
         model=settings.model_name,
         api_base=settings.model_api_url
     )
 
-    # Create agent
     agent = Agent(
         name=settings.agent_name,
         instructions=settings.agent_instructions,
         model=model_api
     )
 
-    # Create server
     server = AgentServer(agent, port=settings.agent_port)
 
     logger.info(f"Created agent server: {settings.agent_name}")
     return server
 
 
-# Create module-level app for uvicorn deployment
-# This allows starting the server with: uvicorn agent.server:app
-try:
+def create_app(settings: AgentServerSettings = None) -> FastAPI:
     _server = create_agent_server()
     app = _server.create_app()
-    logger.info(f"Module-level app created for agent: {_server.agent.name}")
-except Exception as e:
-    logger.warning(f"Failed to create module-level app: {e}")
-    # Create a minimal app for development/testing
-    from fastapi import FastAPI
-    app = FastAPI(title="Agent Server (Not Configured)")
+    logger.info(f"Created Agent FastAPI App")
+    return app
 
-# Example usage (similar to Google ADK example):
-# agent = Agent(name="my_agent", instructions="You are helpful", model=ModelAPI(...))
-# server = AgentServer(agent, port=8001)
-# app = server.create_app()  # For ASGI deployment
