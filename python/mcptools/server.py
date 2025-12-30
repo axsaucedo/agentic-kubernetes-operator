@@ -1,11 +1,14 @@
 import json
 import logging
+import time
 from types import FunctionType
 from typing import Dict, Any, Callable, List, Optional, Literal
 from fastmcp import FastMCP
 import uvicorn
 from fastmcp.server.http import StarletteWithLifespan
 from pydantic_settings import BaseSettings
+from starlette.routing import Route
+from starlette.responses import JSONResponse
 
 
 logger = logging.getLogger(__name__)
@@ -79,10 +82,28 @@ class MCPServer:
         return list(self.tools_registry.keys())
 
     def create_app(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> StarletteWithLifespan:
-        """Create FastMCP ASGI app using the http_app creation that returns a starlette app."""
-        # TODO: Add /health and /ready probes similar to the ones from agent/server.py 
-        # TODO: Add tests for probes
-        return self.mcp.http_app(transport=transport)
+        """Create FastMCP ASGI app with health probes."""
+        mcp_app = self.mcp.http_app(transport=transport)
+        
+        async def health(request):
+            return JSONResponse({
+                "status": "healthy",
+                "tools": len(self.tools_registry),
+                "timestamp": int(time.time())
+            })
+        
+        async def ready(request):
+            return JSONResponse({
+                "status": "ready",
+                "tools": self.get_registered_tools(),
+                "timestamp": int(time.time())
+            })
+        
+        # Prepend health routes
+        mcp_app.routes.insert(0, Route("/health", health))
+        mcp_app.routes.insert(1, Route("/ready", ready))
+        
+        return mcp_app
 
     def run(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> None:
         """Run the MCP server through the FastMCP run command."""
@@ -93,7 +114,7 @@ class MCPServer:
                 app,
                 host=self._host,
                 port=self._port,
-                log_level=self._log_level
+                log_level=self._log_level.lower()
             )
         except Exception as e:
             logger.error(f"Failed to start MCP server: {e}")

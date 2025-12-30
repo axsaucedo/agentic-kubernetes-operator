@@ -36,9 +36,6 @@ class AgentCard:
         }
 
 
-# TODO: Remove RemoteAgent class, and instead just use Agent class as it seems that both
-#    require the exact same functionality, the only difference is that one may have is_remote
-#    flag enabled, as it seems that a modelAPI could be configured to talk to a model
 class RemoteAgent:
 
     def __init__(self, name: str, card_url: str = None, agent_card_url: str = None):
@@ -134,6 +131,10 @@ class Agent:
 
         logger.info(f"Agent initialized: {name}")
 
+    async def initialize(self) -> None:
+        """Initialize the agent (no-op, kept for API compatibility)."""
+        pass
+
 
     async def process_message(
         self,
@@ -227,9 +228,9 @@ class Agent:
     def get_agent_card(self, base_url: str) -> AgentCard:
         # Collect available tools
         skills = []
-        for tool_client in self.tools:
-            tools = tool_client.get_tools()
-           for tool in tools:
+        for mcp_client in self.mcp_clients:
+            tools = mcp_client.get_tools()
+            for tool in tools:
                 skills.append({
                     "name": tool.name,
                     "description": tool.description,
@@ -238,7 +239,7 @@ class Agent:
 
         # Collect sub-agent capabilities
         capabilities = ["message_processing", "task_execution"]  # Basic capabilities
-        if self.tools:
+        if self.mcp_clients:
             capabilities.append("tool_execution")
         if self.sub_agents:
             capabilities.append("task_delegation")

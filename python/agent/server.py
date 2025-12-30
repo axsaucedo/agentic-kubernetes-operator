@@ -290,8 +290,9 @@ def create_agent_server(settings: AgentServerSettings = None) -> AgentServer:
 
     agent = Agent(
         name=settings.agent_name,
+        description=settings.agent_description,
         instructions=settings.agent_instructions,
-        model=model_api
+        model_api=model_api
     )
 
     server = AgentServer(agent, port=settings.agent_port)

@@ -86,7 +86,7 @@ class TestAgentCreation:
             model_api=mock_llm
         )
 
-        # Initialize should work even without tools
+        # Initialize should work (no-op method for API compatibility)
         await agent.initialize()
         assert agent is not None
         logger.info("✓ Agent initialization works")

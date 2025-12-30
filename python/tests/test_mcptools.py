@@ -4,57 +4,49 @@ Integration tests for MCP server and client.
 Tests:
 - MCPServer startup with tools dict
 - MCPServer startup with MCP_TOOLS_STRING env var
-- MCPToolset discovery of tools
+- MCPClient discovery of tools
 - End-to-end tool invocation (echo, simple math)
 - Error handling for missing servers
 """
 
 import os
 import pytest
-import httpx
-import asyncio
-import subprocess
-import time
 import logging
-from pathlib import Path
 
 from mcptools.server import MCPServer, MCPServerSettings
-from mcptools.client import MCPToolset
+from mcptools.client import MCPClient, MCPClientSettings, Tool
 
 
 logger = logging.getLogger(__name__)
 
+
 @pytest.fixture
 def mcp_server_with_tools():
-
+    """Create MCP server with tools from string."""
     mcp_tools_string = """
-    def hello(s: str) -> str:
-        \"""Returns the printed hello <string>
-           Args:
-               s: string to be printed\"""
-        print(f"hello {s}")
-    """
+def hello(s: str) -> str:
+    \"\"\"Returns the printed hello <string>
+       Args:
+           s: string to be printed\"\"\"
+    return f"hello {s}"
+"""
 
     settings = MCPServerSettings(mcp_tools_string=mcp_tools_string)
-
     mcp_server = MCPServer(settings)
-
     return mcp_server
 
 
 @pytest.mark.asyncio
 async def test_mcp_server_startup_with_tools_dict(mcp_server_with_tools):
+    """Test MCP server starts with tools from string."""
     assert mcp_server_with_tools is not None
     assert "hello" in mcp_server_with_tools.tools_registry
 
 
-
 @pytest.mark.asyncio
 async def test_mcp_tool_model():
-    """Test MCPTool Pydantic model."""
-    from mcptools.client import MCPTool
-
-    tool = MCPTool(
+    """Test Tool dataclass model."""
+    tool = Tool(
         name="test_tool",
         description="A test tool",
         parameters={"param1": "string"}
@@ -63,16 +55,7 @@ async def test_mcp_tool_model():
     assert tool.name == "test_tool"
     assert tool.description == "A test tool"
     assert tool.parameters == {"param1": "string"}
-    logger.info("✓ MCPTool model works correctly")
-
-
-@pytest.mark.asyncio
-async def test_mcp_toolset_close(mcp_test_server):
-    """Test MCPToolset cleanup."""
-
-    toolset = MCPToolset(mcp_server_urls=[mcp_test_server.url])
-    await toolset.close()
-    logger.info("✓ MCPToolset closed successfully")
+    logger.info("✓ Tool model works correctly")
 
 
 def test_echo_tool_execution():
@@ -103,8 +86,6 @@ def test_calculator_tools():
 
 def test_mcp_server_tools_registry():
     """Test that MCPServer maintains tools registry."""
-    from mcptools.server import MCPServer
-
     def tool1(x: int) -> int:
         """Tool 1."""
         return x * 2
@@ -113,8 +94,10 @@ def test_mcp_server_tools_registry():
         """Tool 2."""
         return y.upper()
 
-    tools = {"tool1": tool1, "tool2": tool2}
-    server = MCPServer(port=9998, tools=tools)
+    # Create settings and register tools after
+    settings = MCPServerSettings(mcp_port=9998)
+    server = MCPServer(settings)
+    server.register_tools({"tool1": tool1, "tool2": tool2})
 
     assert "tool1" in server.tools_registry
     assert "tool2" in server.tools_registry
@@ -123,39 +106,80 @@ def test_mcp_server_tools_registry():
     logger.info("✓ MCPServer tools registry works correctly")
 
 
-@pytest.mark.asyncio
-async def test_mcp_toolset_with_multiple_servers():
-    """Test MCPToolset can handle multiple server URLs."""
-    from mcptools.client import MCPToolset
-
-    urls = [
-        "http://localhost:8004",
-        "http://localhost:8005",
-        "http://localhost:8006",
-    ]
-    toolset = MCPToolset(mcp_server_urls=urls)
-
-    assert len(toolset.server_urls) == 3
-    assert toolset.server_urls == urls
-    logger.info("✓ MCPToolset handles multiple servers")
-
-
 def test_mcp_server_env_var_parsing():
-    """Test MCPServer can parse environment variable."""
-    from mcptools.server import MCPServer
-    import os
-
-    # Set environment variable
-    tools_string = '{"echo": lambda text: f"Echo: {text}", "add": lambda a, b: a + b}'
+    """Test MCPServer can parse environment variable with valid Python."""
+    # Set environment variable with valid Python function
+    tools_string = '''
+def echo(text: str) -> str:
+    """Echo the text."""
+    return f"Echo: {text}"
+'''
     os.environ["MCP_TOOLS_STRING"] = tools_string
 
     try:
         # Create server which will parse the env var
-        server = MCPServer(port=9997)
+        settings = MCPServerSettings(mcp_port=9997)
+        server = MCPServer(settings)
         # Server should have loaded tools from env var
         assert server.tools_registry is not None
+        assert "echo" in server.tools_registry
         logger.info("✓ MCPServer parses environment variable")
     finally:
         # Clean up
         if "MCP_TOOLS_STRING" in os.environ:
             del os.environ["MCP_TOOLS_STRING"]
+
+
+def test_mcp_client_creation():
+    """Test MCPClient can be created."""
+    settings = MCPClientSettings(
+        mcp_client_host="http://localhost",
+        mcp_client_port="8002"
+    )
+    client = MCPClient(settings)
+    
+    assert client is not None
+    assert "localhost" in client._url
+    logger.info("✓ MCPClient created successfully")
+
+
+@pytest.mark.asyncio
+async def test_mcp_client_close():
+    """Test MCPClient cleanup."""
+    settings = MCPClientSettings(
+        mcp_client_host="http://localhost",
+        mcp_client_port="8002"
+    )
+    client = MCPClient(settings)
+    await client.close()
+    logger.info("✓ MCPClient closed successfully")
+
+
+def test_mcp_server_get_registered_tools():
+    """Test get_registered_tools returns tool names."""
+    tools_string = '''
+def add(a: int, b: int) -> int:
+    """Add two numbers."""
+    return a + b
+
+def sub(a: int, b: int) -> int:
+    """Subtract two numbers."""
+    return a - b
+'''
+    settings = MCPServerSettings(mcp_port=9996, mcp_tools_string=tools_string)
+    server = MCPServer(settings)
+    
+    tools = server.get_registered_tools()
+    assert "add" in tools
+    assert "sub" in tools
+    assert len(tools) == 2
+    logger.info("✓ get_registered_tools works correctly")
+
+
+def test_mcp_server_empty_tools_string():
+    """Test MCPServer handles empty tools string."""
+    settings = MCPServerSettings(mcp_port=9995, mcp_tools_string="")
+    server = MCPServer(settings)
+    
+    assert len(server.tools_registry) == 0
+    logger.info("✓ MCPServer handles empty tools string")

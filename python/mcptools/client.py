@@ -68,7 +68,7 @@ class MCPClient:
         return response.json()
 
     def get_tools(self) -> List[Tool]:
-        return list(self._tools.keys())
+        return list(self._tools.values())
 
     async def close(self):
         try:

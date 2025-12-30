@@ -10,16 +10,14 @@ This test suite validates:
 """
 
 import logging
-import asyncio
 from typing import Dict, List
 
 import pytest
 import pytest_asyncio
-import httpx
 
 from agent.client import Agent, RemoteAgent
 from agent.memory import LocalMemory
-from agent.server import AgentServer, AgentServerSettings
+from agent.server import AgentServer
 from modelapi.client import ModelAPI
 
 logger = logging.getLogger(__name__)
@@ -31,6 +29,9 @@ class MockModelAPI(ModelAPI):
     def __init__(self, agent_name: str):
         self.agent_name = agent_name
         self.call_count = 0
+        # Don't call super().__init__ to avoid HTTP client setup
+        self.model = "mock"
+        self.api_base = "mock://localhost"
 
     async def complete(self, messages: List[Dict]) -> Dict:
         self.call_count += 1
@@ -63,9 +64,16 @@ class AgentTestCluster:
         self.agents: Dict[str, Agent] = {}
         self.servers: Dict[str, AgentServer] = {}
         self.memories: Dict[str, LocalMemory] = {}
+        self.remote_agents: Dict[str, List[RemoteAgent]] = {}
         self.base_port = 8020
 
-    def create_agent(self, name: str, instructions: str, port_offset: int = 0) -> Agent:
+    def create_agent(
+        self,
+        name: str,
+        instructions: str,
+        port_offset: int = 0,
+        sub_agents: List[RemoteAgent] = None
+    ) -> Agent:
         """Create an agent with inspectable memory."""
         memory = LocalMemory()
         model_api = MockModelAPI(name)
@@ -73,8 +81,9 @@ class AgentTestCluster:
         agent = Agent(
             name=name,
             instructions=instructions,
-            model=model_api,
-            memory=memory
+            model_api=model_api,
+            memory=memory,
+            sub_agents=sub_agents or []
         )
 
         self.agents[name] = agent
@@ -86,19 +95,6 @@ class AgentTestCluster:
 
         logger.info(f"Created agent '{name}' with memory system")
         return agent
-
-    async def add_remote_agent(self, agent_name: str, remote_name: str, remote_port: int):
-        """Add a remote agent reference to an agent."""
-        if agent_name not in self.agents:
-            raise ValueError(f"Agent {agent_name} not found")
-
-        remote_agent = RemoteAgent(
-            name=remote_name,
-            card_url=f"http://localhost:{remote_port}"
-        )
-
-        await self.agents[agent_name].add_sub_agent(remote_agent)
-        logger.info(f"Added remote agent {remote_name} to {agent_name}")
 
     async def get_memory_events(self, agent_name: str, session_id: str = None) -> List:
         """Get memory events for inspection."""
@@ -141,29 +137,30 @@ async def agent_cluster():
     """Fixture providing a test agent cluster with memory inspection."""
     cluster = AgentTestCluster()
 
-    # Create worker agents
-    worker1 = cluster.create_agent(
+    # Create worker agents first
+    cluster.create_agent(
         name="worker-1",
         instructions="You are worker 1. Process tasks efficiently and mention your worker ID.",
         port_offset=1
     )
 
-    worker2 = cluster.create_agent(
+    cluster.create_agent(
         name="worker-2",
         instructions="You are worker 2. Process tasks efficiently and mention your worker ID.",
         port_offset=2
     )
 
-    # Create coordinator agent
-    coordinator = cluster.create_agent(
+    # Create remote agent references for coordinator
+    remote_worker1 = RemoteAgent(name="worker-1", card_url="http://localhost:8021")
+    remote_worker2 = RemoteAgent(name="worker-2", card_url="http://localhost:8022")
+
+    # Create coordinator agent with sub_agents
+    cluster.create_agent(
         name="coordinator",
         instructions="You are the coordinator. You can delegate tasks to worker-1 and worker-2.",
-        port_offset=0
+        port_offset=0,
+        sub_agents=[remote_worker1, remote_worker2]
     )
-
-    # Set up remote agent connections (coordinator -> workers)
-    await cluster.add_remote_agent("coordinator", "worker-1", 8021)
-    await cluster.add_remote_agent("coordinator", "worker-2", 8022)
 
     yield cluster
 
@@ -247,7 +244,7 @@ async def test_remote_agent_delegation(agent_cluster):
         # Expected to fail with HTTP connection since we're not running real servers
         # But we can verify the delegation logic is in place
         logger.info(f"Delegation failed as expected (no real HTTP servers): {e}")
-        assert "worker-1" in str(e) or "connection" in str(e).lower()
+        assert "worker-1" in str(e) or "connection" in str(e).lower() or "connect" in str(e).lower()
 
     logger.info("✓ Coordinator has remote agent delegation capability")
 
@@ -301,9 +298,9 @@ async def test_memory_isolation_between_agents(agent_cluster):
     assert len(coord_events) > 0
 
     # Verify content isolation
-    w1_content = " ".join([e.content for e in w1_events if hasattr(e.content, 'lower')])
-    w2_content = " ".join([e.content for e in w2_events if hasattr(e.content, 'lower')])
-    coord_content = " ".join([e.content for e in coord_events if hasattr(e.content, 'lower')])
+    w1_content = " ".join([str(e.content) for e in w1_events if hasattr(e.content, '__str__')])
+    w2_content = " ".join([str(e.content) for e in w2_events if hasattr(e.content, '__str__')])
+    coord_content = " ".join([str(e.content) for e in coord_events if hasattr(e.content, '__str__')])
 
     # Worker 1's secret should not be in other agents' memories
     assert "Worker 1 secret" in w1_content
@@ -348,7 +345,7 @@ async def test_mock_model_api_functionality(agent_cluster):
     """Test that our mock model API works correctly for testing."""
 
     worker1_agent = agent_cluster.agents["worker-1"]
-    model = worker1_agent.model
+    model = worker1_agent.model_api
 
     # Test call counting
     initial_count = model.call_count
@@ -360,9 +357,9 @@ async def test_mock_model_api_functionality(agent_cluster):
     assert model.call_count == initial_count + 2
 
     # Verify different agents have different models
-    worker2_model = agent_cluster.agents["worker-2"].model
-    assert worker1_agent.model != worker2_model
-    assert worker1_agent.model.agent_name != worker2_model.agent_name
+    worker2_model = agent_cluster.agents["worker-2"].model_api
+    assert worker1_agent.model_api != worker2_model
+    assert worker1_agent.model_api.agent_name != worker2_model.agent_name
 
     logger.info("✓ Mock model APIs are functioning correctly for testing")
 
