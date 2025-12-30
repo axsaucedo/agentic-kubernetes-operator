@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_agent_server(port: int, model_url: str, model_name: str, agent_name: str):
-    """Run agent server in subprocess."""
+    """Run agent server in subprocess with debug memory endpoints enabled."""
     settings = AgentServerSettings(
         agent_name=agent_name,
         agent_description=f"Test Agent: {agent_name}",
@@ -30,7 +30,8 @@ def run_agent_server(port: int, model_url: str, model_name: str, agent_name: str
         agent_port=port,
         model_api_url=model_url,
         model_name=model_name,
-        agent_log_level="WARNING"
+        agent_log_level="WARNING",
+        agent_debug_memory_endpoints=True  # Enable for testing
     )
     server = create_agent_server(settings)
     server.run()

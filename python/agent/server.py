@@ -41,6 +41,9 @@ class AgentServerSettings(BaseSettings):
     # Sub-agent configuration (comma-separated list of name:url pairs)
     # Format: "worker-1:http://localhost:8001,worker-2:http://localhost:8002"
     agent_sub_agents: str = ""
+    
+    # Debug settings (only enable in development/testing)
+    agent_debug_memory_endpoints: bool = False
 
     class Config:
         env_file = ".env"
@@ -49,12 +52,6 @@ class AgentServerSettings(BaseSettings):
 
 class TaskRequest(BaseModel):
     """A2A task request model."""
-    task: str
-
-
-class DelegateRequest(BaseModel):
-    """Delegation request model."""
-    agent: str
     task: str
 
 
@@ -70,15 +67,17 @@ class ChatCompletionRequest(BaseModel):
 class AgentServer:
     """Simple AgentServer following Google ADK patterns."""
 
-    def __init__(self, agent: Agent, port: int = 8000):
+    def __init__(self, agent: Agent, port: int = 8000, debug_memory_endpoints: bool = False):
         """Initialize AgentServer with an agent (like Google ADK pattern).
 
         Args:
             agent: Agent instance to serve
             port: Port to serve on
+            debug_memory_endpoints: Whether to enable /memory/* endpoints (for testing)
         """
         self.agent = agent
         self.port = port
+        self.debug_memory_endpoints = debug_memory_endpoints
 
         # Create FastAPI app
         self.app = FastAPI(
@@ -144,60 +143,39 @@ class AgentServer:
                 logger.error(f"Agent invocation error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @self.app.post("/agent/delegate")
-        async def delegate_task(delegate_request: DelegateRequest):
-            """Delegate a task to a sub-agent."""
-            try:
-                # Create a session for tracking delegation
-                session_id = await self.agent.memory.create_session("agent", "delegation")
-                
-                # Delegate to sub-agent
-                response = await self.agent.delegate_to_sub_agent(
-                    agent_name=delegate_request.agent,
-                    task=delegate_request.task,
-                    session_id=session_id
-                )
-                
+        # Debug memory endpoints (only enabled when debug_memory_endpoints=True)
+        if self.debug_memory_endpoints:
+            @self.app.get("/memory/events")
+            async def get_memory_events():
+                """Get all memory events for debugging/testing."""
+                sessions = await self.agent.memory.list_sessions()
+                all_events = []
+                for sid in sessions:
+                    events = await self.agent.memory.get_session_events(sid)
+                    all_events.extend([e.to_dict() for e in events])
                 return JSONResponse({
-                    "response": response,
-                    "agent": delegate_request.agent,
-                    "status": "completed",
-                    "session_id": session_id
+                    "agent": self.agent.name,
+                    "events": all_events,
+                    "total": len(all_events)
                 })
-            
-            except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e))
-            except Exception as e:
-                logger.error(f"Delegation error: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
 
-        @self.app.get("/memory/events")
-        async def get_memory_events():
-            """Get all memory events for debugging/testing."""
-            sessions = await self.agent.memory.list_sessions()
-            all_events = []
-            for sid in sessions:
-                events = await self.agent.memory.get_session_events(sid)
-                all_events.extend([e.to_dict() for e in events])
-            return JSONResponse({
-                "agent": self.agent.name,
-                "events": all_events,
-                "total": len(all_events)
-            })
-
-        @self.app.get("/memory/sessions")
-        async def get_memory_sessions():
-            """Get list of memory sessions."""
-            sessions = await self.agent.memory.list_sessions()
-            return JSONResponse({
-                "agent": self.agent.name,
-                "sessions": sessions,
-                "total": len(sessions)
-            })
+            @self.app.get("/memory/sessions")
+            async def get_memory_sessions():
+                """Get list of memory sessions."""
+                sessions = await self.agent.memory.list_sessions()
+                return JSONResponse({
+                    "agent": self.agent.name,
+                    "sessions": sessions,
+                    "total": len(sessions)
+                })
 
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: Request):
-            """OpenAI-compatible chat completions endpoint (streaming + non-streaming)."""
+            """OpenAI-compatible chat completions endpoint (streaming + non-streaming).
+            
+            Supports special role 'delegate' for sub-agent delegation:
+            {"role": "delegate", "content": "worker-1: Process this task"}
+            """
             try:
                 body = await request.json()
 
@@ -207,6 +185,12 @@ class AgentServer:
 
                 model_name = body.get("model", "agent")
                 stream_requested = body.get("stream", False)
+
+                # Check for delegation request (role: "delegate")
+                for msg in messages:
+                    if msg.get("role") == "delegate":
+                        content = msg.get("content", "")
+                        return await self._handle_delegation(content, model_name)
 
                 # Extract user message (simple approach)
                 user_content = ""
@@ -227,6 +211,71 @@ class AgentServer:
             except Exception as e:
                 logger.error(f"Chat completion error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+    async def _handle_delegation(self, content: str, model_name: str) -> JSONResponse:
+        """Handle delegation request via chat completions.
+        
+        Args:
+            content: Format "agent_name: task" (e.g., "worker-1: Process this data")
+            model_name: Model name for response
+            
+        Returns:
+            OpenAI-compatible chat completion response
+        """
+        # Parse content: "agent_name: task"
+        if ":" not in content:
+            raise HTTPException(
+                status_code=400, 
+                detail="Delegate content must be in format 'agent_name: task'"
+            )
+        
+        agent_name, task = content.split(":", 1)
+        agent_name = agent_name.strip()
+        task = task.strip()
+        
+        if not agent_name or not task:
+            raise HTTPException(
+                status_code=400, 
+                detail="Both agent name and task are required"
+            )
+        
+        try:
+            # Create session for tracking
+            session_id = await self.agent.memory.create_session("agent", "delegation")
+            
+            # Delegate to sub-agent
+            response = await self.agent.delegate_to_sub_agent(
+                agent_name=agent_name,
+                task=task,
+                session_id=session_id
+            )
+            
+            # Return OpenAI-compatible response
+            return JSONResponse({
+                "id": f"chatcmpl-{uuid.uuid4().hex}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": model_name,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": response
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0
+                }
+            })
+            
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.error(f"Delegation error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def _complete_chat_completion(self, user_message: str, model_name: str) -> JSONResponse:
         """Handle non-streaming chat completion."""
@@ -376,7 +425,11 @@ def create_agent_server(settings: AgentServerSettings = None, sub_agents: List[R
         sub_agents=sub_agents
     )
 
-    server = AgentServer(agent, port=settings.agent_port)
+    server = AgentServer(
+        agent, 
+        port=settings.agent_port,
+        debug_memory_endpoints=settings.agent_debug_memory_endpoints
+    )
 
     logger.info(f"Created agent server: {settings.agent_name} with {len(sub_agents)} sub-agents")
     return server
