@@ -18,6 +18,7 @@ class MCPServerSettings(BaseSettings):
     mcp_host: str = "0.0.0.0"
     mcp_port: int = 8002
     mcp_tools_string: str = ""
+    mcp_log_level: str = "INFO"
 
 
 class MCPServer:
@@ -27,6 +28,7 @@ class MCPServer:
         """Initialize MCP server."""
         self._host = settings.mcp_host
         self._port = settings.mcp_port
+        self._log_level = settings.mcp_log_level
         self.mcp = FastMCP("Dynamic MCP Server")
         self.tools_registry: Dict[str, Callable] = {}
 
@@ -78,11 +80,23 @@ class MCPServer:
 
     def create_app(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> StarletteWithLifespan:
         """Create FastMCP ASGI app using the http_app creation that returns a starlette app."""
+        # TODO: Add /health and /ready probes similar to the ones from agent/server.py 
+        # TODO: Add tests for probes
         return self.mcp.http_app(transport=transport)
 
     def run(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> None:
         """Run the MCP server through the FastMCP run command."""
         logger.info(f"Starting MCP server on {self._host}:{self._port} with tools: {self.get_registered_tools()}")
-        self.mcp.run(host=self._host, port=self._port, transport=transport)
+        app = self.create_app(transport)
+        try:
+            uvicorn.run(
+                app,
+                host=self._host,
+                port=self._port,
+                log_level=self._log_level
+            )
+        except Exception as e:
+            logger.error(f"Failed to start MCP server: {e}")
+            raise
 
 

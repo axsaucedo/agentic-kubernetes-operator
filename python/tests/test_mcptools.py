@@ -18,167 +18,35 @@ import time
 import logging
 from pathlib import Path
 
+from mcptools.server import MCPServer, MCPServerSettings
+from mcptools.client import MCPToolset
+
+
 logger = logging.getLogger(__name__)
 
-
-class MCPTestServer:
-    """Manages a test MCP server subprocess."""
-
-    def __init__(self, port: int = 8004):
-        self.port = port
-        self.process = None
-        self.url = f"http://localhost:{port}"
-
-    def start(self, timeout: int = 10) -> bool:
-        """Start the MCP server subprocess.
-
-        Args:
-            timeout: Seconds to wait for server to become ready
-
-        Returns:
-            True if server started successfully
-        """
-        logger.info(f"Starting MCP test server on port {self.port}...")
-
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        env["MCP_SERVER_PORT"] = str(self.port)
-
-        # Create a simple test MCP server script
-        server_script = """
-import sys
-sys.path.insert(0, '.')
-
-from mcptools.server import MCPServer
-
-def echo(text: str) -> str:
-    '''Echo tool - repeats the input text.'''
-    return f"Echo: {text}"
-
-def add(a: int, b: int) -> int:
-    '''Add tool - adds two numbers.'''
-    return a + b
-
-def greet(name: str) -> str:
-    '''Greet tool - greets a person by name.'''
-    return f"Hello, {name}!"
-
-tools = {
-    'echo': echo,
-    'add': add,
-    'greet': greet,
-}
-
-server = MCPServer(port=%d, tools=tools)
-server.run()
-""" % self.port
-
-        # Write server script to temp file
-        repo_root = Path(__file__).parent.parent.parent
-        script_path = repo_root / "python" / "_test_mcp_server.py"
-        script_path.write_text(server_script)
-
-        try:
-            self.process = subprocess.Popen(
-                [
-                    "python",
-                    str(script_path),
-                ],
-                cwd=str(repo_root),
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-
-            # Wait for server to be ready
-            if self._wait_for_readiness(timeout):
-                logger.info(f"MCP server ready at {self.url}")
-                return True
-            else:
-                logger.error(f"MCP server did not become ready within {timeout}s")
-                self.stop()
-                return False
-
-        except Exception as e:
-            logger.error(f"Failed to start MCP server: {e}")
-            raise
-
-    def _wait_for_readiness(self, timeout: int) -> bool:
-        """Wait for server to be ready.
-
-        Args:
-            timeout: Seconds to wait
-
-        Returns:
-            True if server is ready
-        """
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            try:
-                # Try to connect to the server
-                response = httpx.get(f"{self.url}/tools", timeout=1.0)
-                if response.status_code in (200, 404):
-                    logger.info("MCP server responded")
-                    return True
-            except Exception:
-                pass
-
-            time.sleep(0.5)
-
-        return False
-
-    def stop(self):
-        """Stop the MCP server."""
-        if self.process:
-            logger.info("Stopping MCP server...")
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                logger.warning("MCP server didn't stop gracefully, killing...")
-                self.process.kill()
-            logger.info("MCP server stopped")
-
-
 @pytest.fixture
-def mcp_test_server():
-    """Fixture that provides a started test MCP server."""
-    server = MCPTestServer(port=8004)
-    if not server.start():
-        raise RuntimeError("Failed to start MCP test server")
-    yield server
-    server.stop()
+def mcp_server_with_tools():
+
+    mcp_tools_string = """
+    def hello(s: str) -> str:
+        \"""Returns the printed hello <string>
+           Args:
+               s: string to be printed\"""
+        print(f"hello {s}")
+    """
+
+    settings = MCPServerSettings(mcp_tools_string=mcp_tools_string)
+
+    mcp_server = MCPServer(settings)
+
+    return mcp_server
 
 
 @pytest.mark.asyncio
-async def test_mcp_server_startup_with_tools_dict():
-    """Test that MCPServer starts successfully with tools dict."""
-    from mcptools.server import MCPServer
+async def test_mcp_server_startup_with_tools_dict(mcp_server_with_tools):
+    assert mcp_server_with_tools is not None
+    assert "hello" in mcp_server_with_tools.tools_registry
 
-    def test_echo(text: str) -> str:
-        """Test echo function."""
-        return f"Echo: {text}"
-
-    tools = {"echo": test_echo}
-
-    # Create server instance (don't run, just verify instantiation)
-    server = MCPServer(port=9999, tools=tools)
-    assert server is not None
-    assert "echo" in server.tools_registry
-    logger.info("✓ MCPServer instantiated with tools dict")
-
-
-@pytest.mark.asyncio
-async def test_mcp_toolset_creation():
-    """Test that MCPToolset can be created."""
-    from mcptools.client import MCPToolset
-
-    toolset = MCPToolset(mcp_server_urls=["http://localhost:8004"])
-    assert toolset is not None
-    assert toolset.server_urls == ["http://localhost:8004"]
-    logger.info("✓ MCPToolset created successfully")
 
 
 @pytest.mark.asyncio
@@ -201,7 +69,6 @@ async def test_mcp_tool_model():
 @pytest.mark.asyncio
 async def test_mcp_toolset_close(mcp_test_server):
     """Test MCPToolset cleanup."""
-    from mcptools.client import MCPToolset
 
     toolset = MCPToolset(mcp_server_urls=[mcp_test_server.url])
     await toolset.close()
