@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: modelapis.
+  name: modelapis.ethical.institute
 spec:
-  group: ""
+  group: ethical.institute
   names:
     kind: ModelAPI
     listKind: ModelAPIList
@@ -27,7 +27,7 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    name: ""
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ModelAPI is the Schema for the modelapis API

@@ -26,11 +26,11 @@ build: generate manifests
 docker-build: build
 	docker build -t ${IMG} .
 
-# Deploy to K8s cluster
+# Deploy to K8s cluster (uses kustomize via -k flag)
 deploy: manifests
-	kubectl apply -f config/crd/
-	kubectl apply -f config/rbac/
-	kubectl apply -f config/manager/
+	kubectl apply -k config/crd/
+	kubectl apply -k config/rbac/
+	kubectl apply -k config/manager/
 
 # Generate CRD code
 generate:

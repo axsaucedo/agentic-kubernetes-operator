@@ -5,7 +5,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: agentic-operator-role
+  name: agentic-operator
 subjects:
 - kind: ServiceAccount
   name: agentic-operator

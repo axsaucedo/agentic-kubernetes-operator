@@ -1,3 +1,6 @@
+// Package v1alpha1 contains API Schema definitions for the ethical.institute v1alpha1 API group
+// +kubebuilder:object:generate=true
+// +groupName=ethical.institute
 package v1alpha1
 
 import (
