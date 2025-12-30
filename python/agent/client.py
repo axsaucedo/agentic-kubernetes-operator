@@ -218,10 +218,42 @@ class Agent:
                 return await mcp_client.call_tool(tool_name, args)
         raise ValueError(f"Tool '{tool_name}' not found in any tool client")
 
-    async def delegate_to_sub_agent(self, agent_name: str, task: str) -> str:
+    async def delegate_to_sub_agent(self, agent_name: str, task: str, session_id: Optional[str] = None) -> str:
+        """Delegate a task to a sub-agent with memory logging.
+        
+        Args:
+            agent_name: Name of the sub-agent to delegate to
+            task: Task to delegate
+            session_id: Optional session ID for memory logging
+            
+        Returns:
+            Response from the sub-agent
+        """
         for sub_agent in self.sub_agents:
             if sub_agent.name == agent_name:
-                return await sub_agent.invoke(task)
+                # Log delegation request
+                if session_id:
+                    delegation_event = self.memory.create_event(
+                        "delegation_request",
+                        {"agent": agent_name, "task": task}
+                    )
+                    await self.memory.add_event(session_id, delegation_event)
+                
+                logger.info(f"Delegating to sub-agent {agent_name}: {task[:50]}...")
+                
+                # Invoke sub-agent
+                response = await sub_agent.invoke(task)
+                
+                # Log delegation response
+                if session_id:
+                    response_event = self.memory.create_event(
+                        "delegation_response",
+                        {"agent": agent_name, "response": response}
+                    )
+                    await self.memory.add_event(session_id, response_event)
+                
+                logger.info(f"Received response from sub-agent {agent_name}")
+                return response
 
         raise ValueError(f"Sub-agent '{agent_name}' not found")
 

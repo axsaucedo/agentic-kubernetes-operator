@@ -18,7 +18,7 @@ from pydantic_settings import BaseSettings
 import uvicorn
 
 from modelapi.client import ModelAPI
-from agent.client import Agent
+from agent.client import Agent, RemoteAgent
 from agent.memory import LocalMemory
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,10 @@ class AgentServerSettings(BaseSettings):
     agent_instructions: str = "You are a helpful assistant."
     agent_port: int = 8000
     agent_log_level: str = "INFO"
+    
+    # Sub-agent configuration (comma-separated list of name:url pairs)
+    # Format: "worker-1:http://localhost:8001,worker-2:http://localhost:8002"
+    agent_sub_agents: str = ""
 
     class Config:
         env_file = ".env"
@@ -45,6 +49,12 @@ class AgentServerSettings(BaseSettings):
 
 class TaskRequest(BaseModel):
     """A2A task request model."""
+    task: str
+
+
+class DelegateRequest(BaseModel):
+    """Delegation request model."""
+    agent: str
     task: str
 
 
@@ -133,6 +143,57 @@ class AgentServer:
             except Exception as e:
                 logger.error(f"Agent invocation error: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/agent/delegate")
+        async def delegate_task(delegate_request: DelegateRequest):
+            """Delegate a task to a sub-agent."""
+            try:
+                # Create a session for tracking delegation
+                session_id = await self.agent.memory.create_session("agent", "delegation")
+                
+                # Delegate to sub-agent
+                response = await self.agent.delegate_to_sub_agent(
+                    agent_name=delegate_request.agent,
+                    task=delegate_request.task,
+                    session_id=session_id
+                )
+                
+                return JSONResponse({
+                    "response": response,
+                    "agent": delegate_request.agent,
+                    "status": "completed",
+                    "session_id": session_id
+                })
+            
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+            except Exception as e:
+                logger.error(f"Delegation error: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.get("/memory/events")
+        async def get_memory_events():
+            """Get all memory events for debugging/testing."""
+            sessions = await self.agent.memory.list_sessions()
+            all_events = []
+            for sid in sessions:
+                events = await self.agent.memory.get_session_events(sid)
+                all_events.extend([e.to_dict() for e in events])
+            return JSONResponse({
+                "agent": self.agent.name,
+                "events": all_events,
+                "total": len(all_events)
+            })
+
+        @self.app.get("/memory/sessions")
+        async def get_memory_sessions():
+            """Get list of memory sessions."""
+            sessions = await self.agent.memory.list_sessions()
+            return JSONResponse({
+                "agent": self.agent.name,
+                "sessions": sessions,
+                "total": len(sessions)
+            })
 
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: Request):
@@ -278,8 +339,16 @@ class AgentServer:
         uvicorn.run(self.app, host=host, port=self.port)
 
 
-def create_agent_server(settings: AgentServerSettings = None) -> AgentServer:
-
+def create_agent_server(settings: AgentServerSettings = None, sub_agents: List[RemoteAgent] = None) -> AgentServer:
+    """Create an AgentServer with optional sub-agents.
+    
+    Args:
+        settings: Server settings (loaded from env if not provided)
+        sub_agents: List of RemoteAgent instances (overrides settings.agent_sub_agents)
+    
+    Returns:
+        AgentServer instance
+    """
     if not settings:
         settings = AgentServerSettings()
 
@@ -288,16 +357,28 @@ def create_agent_server(settings: AgentServerSettings = None) -> AgentServer:
         api_base=settings.model_api_url
     )
 
+    # Parse sub-agents from settings if not provided directly
+    if sub_agents is None:
+        sub_agents = []
+        if settings.agent_sub_agents:
+            for agent_spec in settings.agent_sub_agents.split(","):
+                agent_spec = agent_spec.strip()
+                if ":" in agent_spec:
+                    name, url = agent_spec.split(":", 1)
+                    sub_agents.append(RemoteAgent(name=name.strip(), card_url=url.strip()))
+                    logger.info(f"Configured sub-agent: {name} -> {url}")
+
     agent = Agent(
         name=settings.agent_name,
         description=settings.agent_description,
         instructions=settings.agent_instructions,
-        model_api=model_api
+        model_api=model_api,
+        sub_agents=sub_agents
     )
 
     server = AgentServer(agent, port=settings.agent_port)
 
-    logger.info(f"Created agent server: {settings.agent_name}")
+    logger.info(f"Created agent server: {settings.agent_name} with {len(sub_agents)} sub-agents")
     return server
 
 

@@ -50,7 +50,7 @@ def multi_agent_cluster(ollama_available):
     if not ollama_available:
         pytest.skip("Ollama not available - skipping multi-agent tests")
     
-    model_url = "http://localhost:11434/v1"
+    model_url = "http://localhost:11434"
     model_name = "smollm2:135m"
     
     agents = [
