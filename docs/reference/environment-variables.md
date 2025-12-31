@@ -56,6 +56,7 @@ Note: Replace `-` with `_` and use uppercase for variable name (e.g., `worker-1`
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AGENT_DEBUG_MEMORY_ENDPOINTS` | Enable `/memory/*` endpoints | `false` |
+| `AGENT_ACCESS_LOG` | Enable uvicorn access logs | `false` |
 
 ## MCP Server Environment Variables
 
@@ -65,6 +66,7 @@ Note: Replace `-` with `_` and use uppercase for variable name (e.g., `worker-1`
 | `MCP_PORT` | Server port | `8000` |
 | `MCP_TOOLS_STRING` | Python code defining tools | `""` |
 | `MCP_LOG_LEVEL` | Logging level | `INFO` |
+| `MCP_ACCESS_LOG` | Enable uvicorn access logs | `false` |
 
 ## Operator-Set Variables
 
