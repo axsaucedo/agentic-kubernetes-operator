@@ -47,8 +47,30 @@ def create_custom_resource(body: Dict[str, Any], namespace: str):
 
 
 def wait_for_deployment(namespace: str, name: str, timeout: int = 300):
-    """Wait for deployment to be ready."""
-    kubectl("rollout", "status", f"deployment/{name}", "-n", namespace, "--timeout", f"{timeout}s")
+    """Wait for deployment to exist and be ready.
+    
+    First polls for the deployment to exist (operator may take time to create it),
+    then waits for the rollout to complete.
+    """
+    import time
+    start_time = time.time()
+    
+    # Poll for deployment existence first (operator may take time to create it)
+    while time.time() - start_time < timeout:
+        try:
+            # Check if deployment exists
+            result = kubectl("get", "deployment", name, "-n", namespace, 
+                           "-o", "jsonpath={.metadata.name}", _ok_code=[0, 1])
+            if name in str(result):
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+    
+    # Now wait for rollout
+    remaining_timeout = max(10, timeout - int(time.time() - start_time))
+    kubectl("rollout", "status", f"deployment/{name}", "-n", namespace, 
+            "--timeout", f"{remaining_timeout}s")
 
 
 def port_forward(namespace: str, service_name: str, local_port: int, remote_port: int = 8000) -> subprocess.Popen:
