@@ -80,10 +80,15 @@ func (r *ModelAPIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 	}
 
-	// Create ConfigMap only for Proxy mode when user provides custom configYaml
-	if modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy && 
-		modelapi.Spec.ProxyConfig != nil && 
-		modelapi.Spec.ProxyConfig.ConfigYaml != "" {
+	// Create ConfigMap for Proxy mode when:
+	// 1. User provides custom configYaml, OR
+	// 2. User provides apiBase but no model (wildcard mode)
+	needsConfigMap := modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy &&
+		modelapi.Spec.ProxyConfig != nil &&
+		(modelapi.Spec.ProxyConfig.ConfigYaml != "" ||
+			(modelapi.Spec.ProxyConfig.APIBase != "" && modelapi.Spec.ProxyConfig.Model == ""))
+
+	if needsConfigMap {
 		configmap := &corev1.ConfigMap{}
 		configmapName := fmt.Sprintf("litellm-config-%s", modelapi.Name)
 		err := r.Get(ctx, types.NamespacedName{Name: configmapName, Namespace: modelapi.Namespace}, configmap)
@@ -200,11 +205,14 @@ func (r *ModelAPIReconciler) constructDeployment(modelapi *agenticv1alpha1.Model
 
 	replicas := int32(1)
 
-	// Build volumes list - only add litellm-config for Proxy mode with custom configYaml
+	// Build volumes list - add litellm-config for Proxy mode when using config file
+	// (custom configYaml OR wildcard mode with apiBase but no model)
 	volumes := []corev1.Volume{}
-	if modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy && 
-		modelapi.Spec.ProxyConfig != nil && 
-		modelapi.Spec.ProxyConfig.ConfigYaml != "" {
+	useConfigFile := modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy &&
+		modelapi.Spec.ProxyConfig != nil &&
+		(modelapi.Spec.ProxyConfig.ConfigYaml != "" ||
+			(modelapi.Spec.ProxyConfig.APIBase != "" && modelapi.Spec.ProxyConfig.Model == ""))
+	if useConfigFile {
 		volumes = append(volumes, corev1.Volume{
 			Name: "litellm-config",
 			VolumeSource: corev1.VolumeSource{
@@ -259,16 +267,22 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 		port = 8000
 		healthPath = "/health"
 
-		// Check if user provided custom configYaml (advanced mode)
-		if modelapi.Spec.ProxyConfig != nil && modelapi.Spec.ProxyConfig.ConfigYaml != "" {
-			// Use config file mode for advanced multi-model routing
+		// Determine which mode to use:
+		// 1. Custom configYaml provided → use config file
+		// 2. apiBase provided but no model → use auto-generated wildcard config file
+		// 3. model provided → use CLI mode
+		useConfigFile := modelapi.Spec.ProxyConfig != nil &&
+			(modelapi.Spec.ProxyConfig.ConfigYaml != "" ||
+				(modelapi.Spec.ProxyConfig.APIBase != "" && modelapi.Spec.ProxyConfig.Model == ""))
+
+		if useConfigFile {
+			// Use config file mode (for custom config or wildcard mode)
 			args = []string{"--config", "/etc/litellm/config.yaml", "--port", "8000"}
 		} else {
-			// Use simple CLI mode - no config file needed
-			// Get model and apiBase from spec or env vars
-			model := "ollama/*"  // Default wildcard to allow any model
+			// Use simple CLI mode - specific model specified
+			model := "gpt-3.5-turbo" // Default fallback
 			apiBase := ""
-			
+
 			if modelapi.Spec.ProxyConfig != nil {
 				if modelapi.Spec.ProxyConfig.Model != "" {
 					model = modelapi.Spec.ProxyConfig.Model
@@ -277,7 +291,7 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 					apiBase = modelapi.Spec.ProxyConfig.APIBase
 				}
 			}
-			
+
 			args = []string{"--model", model, "--port", "8000"}
 			if apiBase != "" {
 				args = append(args, "--api_base", apiBase)
@@ -317,11 +331,14 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 		}
 	}
 
-	// Build volume mounts - only add litellm-config when configYaml is provided
+	// Build volume mounts - add litellm-config when using config file mode
+	// (custom configYaml OR wildcard mode with apiBase but no model)
 	volumeMounts := []corev1.VolumeMount{}
-	if modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy && 
-		modelapi.Spec.ProxyConfig != nil && 
-		modelapi.Spec.ProxyConfig.ConfigYaml != "" {
+	useConfigFile := modelapi.Spec.Mode == agenticv1alpha1.ModelAPIModeProxy &&
+		modelapi.Spec.ProxyConfig != nil &&
+		(modelapi.Spec.ProxyConfig.ConfigYaml != "" ||
+			(modelapi.Spec.ProxyConfig.APIBase != "" && modelapi.Spec.ProxyConfig.Model == ""))
+	if useConfigFile {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "litellm-config",
 			MountPath: "/etc/litellm",
@@ -416,12 +433,30 @@ func (r *ModelAPIReconciler) constructService(modelapi *agenticv1alpha1.ModelAPI
 	return service
 }
 
-// constructConfigMap creates a ConfigMap with user-provided LiteLLM configuration
+// constructConfigMap creates a ConfigMap with LiteLLM configuration
+// If user provides configYaml, use it directly
+// If user provides apiBase but no model, generate a wildcard config
 func (r *ModelAPIReconciler) constructConfigMap(modelapi *agenticv1alpha1.ModelAPI) *corev1.ConfigMap {
-	// Use user-provided configYaml directly - no hardcoded models
 	configYaml := ""
-	if modelapi.Spec.ProxyConfig != nil && modelapi.Spec.ProxyConfig.ConfigYaml != "" {
-		configYaml = modelapi.Spec.ProxyConfig.ConfigYaml
+
+	if modelapi.Spec.ProxyConfig != nil {
+		if modelapi.Spec.ProxyConfig.ConfigYaml != "" {
+			// Use user-provided configYaml directly
+			configYaml = modelapi.Spec.ProxyConfig.ConfigYaml
+		} else if modelapi.Spec.ProxyConfig.APIBase != "" && modelapi.Spec.ProxyConfig.Model == "" {
+			// Generate wildcard config for proxying any model to the apiBase
+			// This allows requests like "ollama/smollm2:135m" to be forwarded to the backend
+			configYaml = fmt.Sprintf(`# Auto-generated wildcard config - forwards any model to backend
+model_list:
+  - model_name: "*"
+    litellm_params:
+      model: "*"
+      api_base: "%s"
+
+litellm_settings:
+  drop_params: true
+`, modelapi.Spec.ProxyConfig.APIBase)
+		}
 	}
 
 	configmap := &corev1.ConfigMap{

@@ -3,7 +3,7 @@
 Tests the agent server running in Kubernetes with the new framework:
 - Health/Ready endpoints
 - Agent card at /.well-known/agent
-- Task invocation with memory verification (using mock_response)
+- Task invocation with memory verification (using Ollama)
 - Chat completions (streaming and non-streaming)
 """
 
@@ -17,6 +17,7 @@ from e2e.conftest import (
     wait_for_deployment,
     port_forward,
     create_modelapi_resource,
+    create_modelapi_hosted_resource,
     create_mcpserver_resource,
     create_agent_resource,
 )
@@ -24,20 +25,20 @@ from e2e.conftest import (
 
 @pytest.mark.asyncio
 async def test_agent_health_discovery_and_invocation(test_namespace: str):
-    """Test complete agent workflow: health, discovery, invocation with mock_response."""
-    # Create resources - using mock proxy (no real LLM needed)
-    modelapi_spec = create_modelapi_resource(test_namespace, "mock-proxy")
+    """Test complete agent workflow: health, discovery, invocation with actual Ollama."""
+    # Create resources - using Ollama for actual model inference
+    modelapi_spec = create_modelapi_hosted_resource(test_namespace, "ollama-proxy")
     create_custom_resource(modelapi_spec, test_namespace)
     
     agent_spec = create_agent_resource(
         namespace=test_namespace,
-        modelapi_name="mock-proxy",
+        modelapi_name="ollama-proxy",
         mcpserver_names=[],
         agent_name="test-agent",
     )
     create_custom_resource(agent_spec, test_namespace)
 
-    wait_for_deployment(test_namespace, "modelapi-mock-proxy", timeout=120)
+    wait_for_deployment(test_namespace, "modelapi-ollama-proxy", timeout=120)
     wait_for_deployment(test_namespace, "agent-test-agent", timeout=120)
 
     pf_process = port_forward(
