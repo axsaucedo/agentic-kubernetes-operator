@@ -1,0 +1,166 @@
+---
+# Sample 2: Multi-Agent with MCP Servers
+# A coordinator agent with two worker agents, all with access to echo MCP tool
+# Deploy: kubectl apply -f 2-multi-agent-mcp.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentic-multi
+  labels:
+    app.kubernetes.io/part-of: agentic-sample-multi
+
+---
+# ModelAPI: LiteLLM proxy to local Ollama (via Docker Desktop host)
+apiVersion: ethical.institute/v1alpha1
+kind: ModelAPI
+metadata:
+  name: multi-modelapi
+  namespace: agentic-multi
+spec:
+  mode: Proxy
+  proxyConfig:
+    env:
+    - name: OPENAI_API_KEY
+      value: "sk-test"
+    - name: LITELLM_LOG
+      value: "WARN"
+    - name: LITELLM_MODEL_LIST
+      value: "ollama/smollm2:135m"
+    - name: OLLAMA_BASE_URL
+      value: "http://host.docker.internal:11434"
+
+---
+# MCPServer: Echo tool for all agents
+apiVersion: ethical.institute/v1alpha1
+kind: MCPServer
+metadata:
+  name: multi-echo-mcp
+  namespace: agentic-multi
+spec:
+  type: python-runtime
+  config:
+    mcp: "test-mcp-echo-server"
+    env:
+    - name: LOG_LEVEL
+      value: "INFO"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+---
+# Agent: Coordinator - orchestrates worker agents
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: coordinator
+  namespace: agentic-multi
+spec:
+  modelAPI: multi-modelapi
+  mcpServers:
+  - multi-echo-mcp
+  config:
+    description: "Coordinator agent that orchestrates worker agents"
+    instructions: |
+      You are a coordinator agent.
+      You can delegate tasks to worker-1 and worker-2.
+      Use worker-1 for general tasks and worker-2 for specialized tasks.
+      You also have access to an echo tool for testing.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 10
+      enableTools: true
+      enableDelegation: true
+  agentNetwork:
+    expose: true
+    access:
+    - worker-1
+    - worker-2
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+
+---
+# Agent: Worker 1 - general purpose worker
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: worker-1
+  namespace: agentic-multi
+spec:
+  modelAPI: multi-modelapi
+  mcpServers:
+  - multi-echo-mcp
+  config:
+    description: "Worker agent 1 for general tasks"
+    instructions: |
+      You are worker-1, a general purpose worker agent.
+      You can be delegated tasks from the coordinator.
+      You have access to an echo tool for testing.
+      Process tasks and return results clearly.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 5
+      enableTools: true
+      enableDelegation: false
+  agentNetwork:
+    expose: true
+    access: []
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+
+---
+# Agent: Worker 2 - specialized worker
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: worker-2
+  namespace: agentic-multi
+spec:
+  modelAPI: multi-modelapi
+  mcpServers:
+  - multi-echo-mcp
+  config:
+    description: "Worker agent 2 for specialized tasks"
+    instructions: |
+      You are worker-2, a specialized worker agent.
+      You can be delegated tasks from the coordinator.
+      You have access to an echo tool for testing.
+      Focus on detailed analysis and specialized processing.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 5
+      enableTools: true
+      enableDelegation: false
+  agentNetwork:
+    expose: true
+    access: []
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"

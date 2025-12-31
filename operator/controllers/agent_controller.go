@@ -168,6 +168,17 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	} else if err != nil {
 		log.Error(err, "failed to get Deployment")
 		return ctrl.Result{}, err
+	} else {
+		// Deployment exists - check if env vars need updating (e.g., peer agents discovered)
+		desiredDeployment := r.constructDeployment(agent, modelapi, mcpServers, peerAgents)
+		if !r.envVarsEqual(deployment.Spec.Template.Spec.Containers[0].Env, desiredDeployment.Spec.Template.Spec.Containers[0].Env) {
+			log.Info("Updating Deployment with new environment", "name", deployment.Name)
+			deployment.Spec.Template.Spec.Containers[0].Env = desiredDeployment.Spec.Template.Spec.Containers[0].Env
+			if err := r.Update(ctx, deployment); err != nil {
+				log.Error(err, "failed to update Deployment")
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	// Create or update A2A Service (if expose is enabled)
@@ -444,6 +455,23 @@ func (r *AgentReconciler) constructEnvVars(agent *agenticv1alpha1.Agent, modelap
 	}
 
 	return env
+}
+
+// envVarsEqual compares two env var lists for equality
+func (r *AgentReconciler) envVarsEqual(a, b []corev1.EnvVar) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aMap := make(map[string]string)
+	for _, e := range a {
+		aMap[e.Name] = e.Value
+	}
+	for _, e := range b {
+		if val, ok := aMap[e.Name]; !ok || val != e.Value {
+			return false
+		}
+	}
+	return true
 }
 
 // constructService creates a Service for A2A communication

@@ -198,20 +198,37 @@ func (r *MCPServerReconciler) constructDeployment(mcpserver *agenticv1alpha1.MCP
 
 // constructPythonContainer creates a container that runs MCP server
 func (r *MCPServerReconciler) constructPythonContainer(mcpserver *agenticv1alpha1.MCPServer) corev1.Container {
-	env := mcpserver.Spec.Config.Env
-	// Convert package name (with hyphens) to module name (with underscores)
-	packageName := mcpserver.Spec.Config.MCP
-	moduleName := strings.ReplaceAll(packageName, "-", "_")
+	env := append([]corev1.EnvVar{}, mcpserver.Spec.Config.Env...)
 
-	container := corev1.Container{
-		Name:            "mcp-server",
-		Image:           "python:3.12-slim",
-		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command: []string{
+	var image string
+	var command []string
+
+	// Check if using toolsString (dynamic tools via MCP_TOOLS_STRING)
+	if mcpserver.Spec.Config.ToolsString != "" {
+		// Use the agentic-agent image with MCP_TOOLS_STRING
+		image = "agentic-agent:latest"
+		command = []string{"python", "-m", "mcptools.server"}
+		env = append(env, corev1.EnvVar{
+			Name:  "MCP_TOOLS_STRING",
+			Value: mcpserver.Spec.Config.ToolsString,
+		})
+	} else {
+		// Use uvx with the package name
+		packageName := mcpserver.Spec.Config.MCP
+		moduleName := strings.ReplaceAll(packageName, "-", "_")
+		image = "python:3.12-slim"
+		command = []string{
 			"sh",
 			"-c",
 			fmt.Sprintf("pip install %s && ( %s || python -m %s )", packageName, packageName, moduleName),
-		},
+		}
+	}
+
+	container := corev1.Container{
+		Name:            "mcp-server",
+		Image:           image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         command,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "http",

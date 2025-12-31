@@ -176,8 +176,11 @@ spec:
                       For python-runtime type: runs as "uvx <package-name>"
                       The package must be available on PyPI
                     type: string
-                required:
-                - mcp
+                  toolsString:
+                    description: |-
+                      ToolsString is a Python literal string defining tools dynamically
+                      When set, the MCP server uses MCP_TOOLS_STRING env var instead of uvx package
+                    type: string
                 type: object
               resources:
                 description: Resources defines compute resources for the server

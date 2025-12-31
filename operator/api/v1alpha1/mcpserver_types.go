@@ -22,7 +22,13 @@ type MCPServerConfig struct {
 	// MCP is the package name to run with uvx (e.g., "mcp-server-calculator")
 	// For python-runtime type: runs as "uvx <package-name>"
 	// The package must be available on PyPI
-	MCP string `json:"mcp"`
+	// +kubebuilder:validation:Optional
+	MCP string `json:"mcp,omitempty"`
+
+	// ToolsString is a Python literal string defining tools dynamically
+	// When set, the MCP server uses MCP_TOOLS_STRING env var instead of uvx package
+	// +kubebuilder:validation:Optional
+	ToolsString string `json:"toolsString,omitempty"`
 
 	// Env variables to pass to the MCP server
 	// +kubebuilder:validation:Optional

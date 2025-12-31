@@ -19,7 +19,7 @@ class MCPServerSettings(BaseSettings):
 
     # Required settings
     mcp_host: str = "0.0.0.0"
-    mcp_port: int = 8002
+    mcp_port: int = 8000
     mcp_tools_string: str = ""
     mcp_log_level: str = "INFO"
 
@@ -119,5 +119,12 @@ class MCPServer:
         except Exception as e:
             logger.error(f"Failed to start MCP server: {e}")
             raise
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    settings = MCPServerSettings()
+    server = MCPServer(settings)
+    server.run()
 
 

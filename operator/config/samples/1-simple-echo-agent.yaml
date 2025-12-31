@@ -1,10 +1,22 @@
 ---
-# ModelAPI resource - LiteLLM proxy to local Ollama
+# Sample 1: Simple Echo Agent with MCP Server
+# A single agent with access to an echo MCP tool and a ModelAPI proxy to local Ollama
+# Deploy: kubectl apply -f 1-simple-echo-agent.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentic-simple
+  labels:
+    app.kubernetes.io/part-of: agentic-sample-simple
+
+---
+# ModelAPI: LiteLLM proxy to local Ollama (via Docker Desktop host)
 apiVersion: ethical.institute/v1alpha1
 kind: ModelAPI
 metadata:
-  name: ollama-proxy
-  namespace: agentic-system
+  name: simple-modelapi
+  namespace: agentic-simple
 spec:
   mode: Proxy
   proxyConfig:
@@ -15,17 +27,16 @@ spec:
       value: "WARN"
     - name: LITELLM_MODEL_LIST
       value: "ollama/smollm2:135m"
-    # For Docker Desktop, use host.docker.internal to reach host's Ollama
     - name: OLLAMA_BASE_URL
       value: "http://host.docker.internal:11434"
 
 ---
-# MCPServer resource - Echo tool (sample MCP server)
+# MCPServer: Echo tool for testing
 apiVersion: ethical.institute/v1alpha1
 kind: MCPServer
 metadata:
-  name: echo-server
-  namespace: agentic-system
+  name: simple-echo-mcp
+  namespace: agentic-simple
 spec:
   type: python-runtime
   config:
@@ -42,27 +53,29 @@ spec:
       cpu: "500m"
 
 ---
-# Agent resource - Echo agent (sample agent)
+# Agent: Simple echo agent with MCP tool access
 apiVersion: ethical.institute/v1alpha1
 kind: Agent
 metadata:
-  name: echo-agent
-  namespace: agentic-system
+  name: simple-agent
+  namespace: agentic-simple
 spec:
-  modelAPI: ollama-proxy
+  modelAPI: simple-modelapi
   mcpServers:
-  - echo-server
+  - simple-echo-mcp
   config:
-    description: "A sample echo agent"
+    description: "A simple echo agent for testing"
     instructions: |
-      You are a helpful assistant.
-      You have access to an echo tool for testing.
+      You are a helpful assistant with access to an echo tool.
+      When asked to echo something, use the echo tool to return the message.
       Always provide clear and concise responses.
     env:
-    - name: AGENT_LOG_LEVEL
-      value: "INFO"
     - name: MODEL_NAME
       value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 5
+      enableTools: true
+      enableDelegation: false
   agentNetwork:
     expose: true
     access: []

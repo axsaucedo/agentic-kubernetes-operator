@@ -1,0 +1,322 @@
+---
+# Sample 3: Hierarchical Multi-Level Agents
+# A complex setup with supervisor -> team leads -> workers hierarchy
+# Demonstrates multi-level delegation and specialized MCP tools
+# Deploy: kubectl apply -f 3-hierarchical-agents.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentic-hierarchy
+  labels:
+    app.kubernetes.io/part-of: agentic-sample-hierarchy
+
+---
+# ModelAPI: LiteLLM proxy to local Ollama
+apiVersion: ethical.institute/v1alpha1
+kind: ModelAPI
+metadata:
+  name: hierarchy-modelapi
+  namespace: agentic-hierarchy
+spec:
+  mode: Proxy
+  proxyConfig:
+    env:
+    - name: OPENAI_API_KEY
+      value: "sk-test"
+    - name: LITELLM_LOG
+      value: "WARN"
+    - name: LITELLM_MODEL_LIST
+      value: "ollama/smollm2:135m"
+    - name: OLLAMA_BASE_URL
+      value: "http://host.docker.internal:11434"
+
+---
+# MCPServer: Echo tool (shared by all agents)
+apiVersion: ethical.institute/v1alpha1
+kind: MCPServer
+metadata:
+  name: hierarchy-echo-mcp
+  namespace: agentic-hierarchy
+spec:
+  type: python-runtime
+  config:
+    mcp: "test-mcp-echo-server"
+    env:
+    - name: LOG_LEVEL
+      value: "INFO"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+---
+# MCPServer: Calculator tool (for analysis team)
+apiVersion: ethical.institute/v1alpha1
+kind: MCPServer
+metadata:
+  name: hierarchy-calc-mcp
+  namespace: agentic-hierarchy
+spec:
+  type: python-runtime
+  config:
+    toolsString: |
+      def calculate(expression: str) -> str:
+          """Evaluate a mathematical expression safely.
+          
+          Args:
+              expression: A mathematical expression like '2 + 2' or '10 * 5'
+          
+          Returns:
+              The result of the calculation as a string
+          """
+          try:
+              # Safe evaluation of basic math
+              allowed = set('0123456789+-*/.(). ')
+              if all(c in allowed for c in expression):
+                  result = eval(expression)
+                  return f"Result: {result}"
+              return "Error: Invalid expression"
+          except Exception as e:
+              return f"Error: {str(e)}"
+    env:
+    - name: LOG_LEVEL
+      value: "INFO"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+---
+# Agent: Supervisor - top level coordinator
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: supervisor
+  namespace: agentic-hierarchy
+spec:
+  modelAPI: hierarchy-modelapi
+  mcpServers: []
+  config:
+    description: "Supervisor agent that manages team leads"
+    instructions: |
+      You are the supervisor agent at the top of the hierarchy.
+      You delegate tasks to team leads: research-lead and analysis-lead.
+      - research-lead: handles information gathering tasks
+      - analysis-lead: handles data analysis and calculations
+      Coordinate between teams to accomplish complex tasks.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 15
+      enableTools: false
+      enableDelegation: true
+  agentNetwork:
+    expose: true
+    access:
+    - research-lead
+    - analysis-lead
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+
+---
+# Agent: Research Lead - manages research workers
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: research-lead
+  namespace: agentic-hierarchy
+spec:
+  modelAPI: hierarchy-modelapi
+  mcpServers:
+  - hierarchy-echo-mcp
+  config:
+    description: "Research team lead that manages research workers"
+    instructions: |
+      You are the research team lead.
+      You receive tasks from the supervisor and can delegate to:
+      - researcher-1: handles general research
+      - researcher-2: handles specialized research
+      You have access to echo tool for testing.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 10
+      enableTools: true
+      enableDelegation: true
+  agentNetwork:
+    expose: true
+    access:
+    - researcher-1
+    - researcher-2
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+
+---
+# Agent: Analysis Lead - manages analysis workers
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: analysis-lead
+  namespace: agentic-hierarchy
+spec:
+  modelAPI: hierarchy-modelapi
+  mcpServers:
+  - hierarchy-calc-mcp
+  config:
+    description: "Analysis team lead that manages analysis workers"
+    instructions: |
+      You are the analysis team lead.
+      You receive tasks from the supervisor and can delegate to:
+      - analyst-1: handles data analysis
+      You have access to calculator tool for computations.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 10
+      enableTools: true
+      enableDelegation: true
+  agentNetwork:
+    expose: true
+    access:
+    - analyst-1
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+
+---
+# Agent: Researcher 1 - worker agent
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: researcher-1
+  namespace: agentic-hierarchy
+spec:
+  modelAPI: hierarchy-modelapi
+  mcpServers:
+  - hierarchy-echo-mcp
+  config:
+    description: "Research worker for general research tasks"
+    instructions: |
+      You are researcher-1, a research worker.
+      You receive tasks from research-lead.
+      Focus on gathering and summarizing information.
+      Use echo tool for testing.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 5
+      enableTools: true
+      enableDelegation: false
+  agentNetwork:
+    expose: true
+    access: []
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+
+---
+# Agent: Researcher 2 - worker agent
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: researcher-2
+  namespace: agentic-hierarchy
+spec:
+  modelAPI: hierarchy-modelapi
+  mcpServers:
+  - hierarchy-echo-mcp
+  config:
+    description: "Research worker for specialized research"
+    instructions: |
+      You are researcher-2, a specialized research worker.
+      You receive tasks from research-lead.
+      Focus on in-depth specialized research.
+      Use echo tool for testing.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 5
+      enableTools: true
+      enableDelegation: false
+  agentNetwork:
+    expose: true
+    access: []
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+
+---
+# Agent: Analyst 1 - worker agent
+apiVersion: ethical.institute/v1alpha1
+kind: Agent
+metadata:
+  name: analyst-1
+  namespace: agentic-hierarchy
+spec:
+  modelAPI: hierarchy-modelapi
+  mcpServers:
+  - hierarchy-calc-mcp
+  config:
+    description: "Analysis worker for data analysis"
+    instructions: |
+      You are analyst-1, a data analysis worker.
+      You receive tasks from analysis-lead.
+      Use the calculator tool for computations.
+      Focus on quantitative analysis.
+    env:
+    - name: MODEL_NAME
+      value: "smollm2:135m"
+    agenticLoop:
+      maxSteps: 5
+      enableTools: true
+      enableDelegation: false
+  agentNetwork:
+    expose: true
+    access: []
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
