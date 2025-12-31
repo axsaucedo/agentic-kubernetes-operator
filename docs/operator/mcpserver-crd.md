@@ -17,9 +17,12 @@ spec:
   # Required: Server configuration
   config:
     # Option 1: PyPI package name
+    # TODO: Update to "tools.fromPackage" instead of "mcp"
     mcp: "test-mcp-echo-server"
     
     # Option 2: Dynamic Python tools
+    # TODO: Update to "tools.fromString" instead of "toolString"
+    # TODO: Add also "tools.fromSecretKeyRef"
     toolsString: |
       def echo(text: str) -> str:
           """Echo the input text."""
@@ -34,14 +37,22 @@ spec:
     - name: LOG_LEVEL
       value: "INFO"
   
-  # Optional: Resource requirements
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "500m"
+  # Advanced: We also provide a podSpec override section
+  #   this allows you for custom overrides like images, etc
+  # TODO: Add podspec override to allow for people to add overrides (eg image override, volume mounts, etc) - should use merge strategy, and this overides take prescedence
+  podSpec:
+    containers:
+    # Resource requirements
+    # TODO: resources should be for podspec level
+    - name: model-api
+      image: <your-custom-image>
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
 
 status:
   phase: Ready           # Pending, Ready, Failed
@@ -53,6 +64,7 @@ status:
   message: ""
 ```
 
+# TODO: Update 
 ## Spec Fields
 
 ### type (required)

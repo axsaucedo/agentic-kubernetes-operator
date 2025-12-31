@@ -16,14 +16,22 @@ spec:
   
   # For Proxy mode: LiteLLM configuration
   proxyConfig:
-    # Backend API URL
+    # Backend API URL (optional)
+    # TODO: Make optional;  
     apiBase: "http://host.docker.internal:11434"
     
-    # Specific model (optional - omit for wildcard mode)
-    model: "ollama/smollm2:135m"
+    # Specific model - This sets single model CLI Litellm setup
+    # If not set, it expects a configfile below or sets automatic wildcard as below
+    # See: https://docs.litellm.ai/docs/providers/openai
+    model: "gpt-3.5-turbo"
     
-    # Full LiteLLM config (optional - for advanced routing)
+    # You can provide a full configYaml from string to load your config
+    # The config below is the wildcard setup that is provided by default
+    # TODO: rename to configYaml.fromString
+    # TODO: add also configYaml.fromSecretKeyRef
+    # TODO: If no apiBase provided and none above then no deafult config
     configYaml: |
+      # This is an example on how an ollama can be proxied in docker desktop
       model_list:
         - model_name: "*"
           litellm_params:
@@ -39,8 +47,9 @@ spec:
           key: openai-key
   
   # For Hosted mode: Ollama configuration
+  # TODO: Update to hostedConfig
   serverConfig:
-    # Model to pull and serve
+    # Model to pull and serve; this is loaded in an initContainer
     model: "smollm2:135m"
     
     # Environment variables
@@ -48,14 +57,22 @@ spec:
     - name: OLLAMA_DEBUG
       value: "false"
     
+  # Advanced: We also provide a podSpec override section
+  #   this allows you for custom overrides like images, etc
+  # TODO: Add podspec override to allow for people to add overrides (eg image override, volume mounts, etc) - should use merge strategy, and this overides take prescedence
+  podSpec:
+    containers:
     # Resource requirements
-    resources:
-      requests:
-        memory: "2Gi"
-        cpu: "1000m"
-      limits:
-        memory: "8Gi"
-        cpu: "4000m"
+    # TODO: resources should be for podspec level
+    - name: mcp-server
+      image: <your-custom-image>
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1000m"
+        limits:
+          memory: "8Gi"
+          cpu: "4000m"
 
 status:
   phase: Ready           # Pending, Ready, Failed

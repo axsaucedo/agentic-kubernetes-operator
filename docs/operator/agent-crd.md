@@ -21,8 +21,8 @@ spec:
   
   # Optional: Agent configuration
   config:
-    # Human-readable description
-    description: "My helpful agent"
+    # Human-readable description for humans and other agents for a2a delegation
+    description: "My helpful agent that performs tasks X/Y"
     
     # System prompt instructions
     instructions: |
@@ -30,6 +30,8 @@ spec:
       Be concise and accurate.
     
     # Agentic loop configuration
+    # TODO: rename to just have reasoningLoopMaxSteps: as we don't need the rest
+    # TODO: Remove the enableTools and the enableDelegation as this is redundant, also in the python code we should remove as both are just dictionaries so the cost of checking if there are no tools is minimal and just avoid requiring any env vars would reduce complexity
     agenticLoop:
       maxSteps: 5          # Max reasoning iterations (1-20)
       enableTools: true    # Enable tool calling
@@ -44,22 +46,34 @@ spec:
   
   # Optional: Agent-to-Agent networking
   agentNetwork:
-    expose: true           # Create Service for A2A discovery
+    # TODO: ENsure that expose is true by default
+    # Create Service for A2A discovery (default true)
+    #     this exposes an agent card at the ./well-known path
+    expose: true           
     access:                # Sub-agents this agent can delegate to
     - worker-1
     - worker-2
   
+  # TODO: Remove this replicas as we have this avaialbel in the podspec
   # Optional: Replica count
   replicas: 1
   
-  # Optional: Resource requirements
-  resources:
-    requests:
-      memory: "256Mi"
-      cpu: "200m"
-    limits:
-      memory: "512Mi"
-      cpu: "1000m"
+  # Advanced: We also provide a podSpec override section
+  #   this allows you for custom overrides like images, etc
+  # TODO: Add podspec override to allow for people to add overrides (eg image override, volume mounts, etc) - should use merge strategy, and this overides take prescedence
+  podSpec:
+    containers:
+    # TODO: resources should be for podspec level
+    - name: agent
+      image: <your-custom-image>
+      # Resource requirements
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "200m"
+        limits:
+          memory: "512Mi"
+          cpu: "1000m"
 
 status:
   phase: Ready             # Pending, Ready, Failed, Waiting
@@ -83,7 +97,7 @@ spec:
   modelAPI: my-modelapi
 ```
 
-The agent waits for the ModelAPI to become Ready before starting.
+The agent waits for the ModelAPI to become Ready before starting (see `waitForDependencies`).
 
 ### mcpServers (optional)
 
@@ -96,7 +110,25 @@ spec:
   - calculator-tools
 ```
 
-All referenced MCPServers must be Ready for the agent to start.
+All referenced MCPServers must be Ready for the agent to start (see `waitForDependencies`).
+
+### waitForDependencies (optional)
+
+Controls whether the agent waits for ModelAPI and MCPServers to be ready before creating the deployment.
+
+```yaml
+spec:
+  waitForDependencies: true  # Default: true
+```
+
+| Value | Behavior |
+|-------|----------|
+| `true` (default) | Agent deployment is created only after ModelAPI and all MCPServers are Ready |
+| `false` | Agent deployment is created immediately; agent handles unavailable dependencies gracefully at runtime |
+
+Setting to `false` is useful when:
+- Deploying agents in any order without worrying about startup sequence
+- Using the Python agent's graceful degradation for unavailable sub-agents/tools
 
 ### config (optional)
 
@@ -125,6 +157,7 @@ config:
     3. Cite your sources
 ```
 
+# TODO: As outlied above to update as outlined above
 #### config.agenticLoop
 
 Configuration for the reasoning loop:
@@ -195,6 +228,7 @@ The operator automatically:
 4. Sets `PEER_AGENT_WORKER_1_CARD_URL=http://worker-1...`
 5. Sets `PEER_AGENT_WORKER_2_CARD_URL=http://worker-2...`
 
+# TODO: remove as outlined above in favour of podspec
 ### replicas (optional)
 
 Number of agent pod replicas:
@@ -208,6 +242,7 @@ Default: 1
 
 Note: Memory is per-pod and not shared between replicas.
 
+# TODO: remove as outlined above in favour of podspec
 ### resources (optional)
 
 Kubernetes resource requirements:
@@ -222,6 +257,8 @@ spec:
       memory: "1Gi"
       cpu: "2000m"
 ```
+
+# TODO: Add section on new podspec and how override works
 
 ## Status Fields
 
@@ -324,6 +361,7 @@ spec:
     expose: true
 ```
 
+# TODO: update docs with waitfordependencies attribute
 ## Troubleshooting
 
 ### Agent Stuck in Pending
