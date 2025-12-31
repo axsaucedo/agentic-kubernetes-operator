@@ -9,7 +9,6 @@ rules:
   resources:
   - configmaps
   - services
-  - events
   verbs:
   - create
   - delete
@@ -62,15 +61,3 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch

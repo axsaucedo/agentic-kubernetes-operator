@@ -376,6 +376,29 @@ func (r *AgentReconciler) constructEnvVars(agent *agenticv1alpha1.Agent, modelap
 		})
 	}
 
+	// Agentic loop configuration
+	if agent.Spec.Config != nil && agent.Spec.Config.AgenticLoop != nil {
+		loop := agent.Spec.Config.AgenticLoop
+		if loop.MaxSteps > 0 {
+			env = append(env, corev1.EnvVar{
+				Name:  "AGENTIC_LOOP_MAX_STEPS",
+				Value: fmt.Sprintf("%d", loop.MaxSteps),
+			})
+		}
+		if loop.EnableTools != nil {
+			env = append(env, corev1.EnvVar{
+				Name:  "AGENTIC_LOOP_ENABLE_TOOLS",
+				Value: fmt.Sprintf("%t", *loop.EnableTools),
+			})
+		}
+		if loop.EnableDelegation != nil {
+			env = append(env, corev1.EnvVar{
+				Name:  "AGENTIC_LOOP_ENABLE_DELEGATION",
+				Value: fmt.Sprintf("%t", *loop.EnableDelegation),
+			})
+		}
+	}
+
 	// MCP Servers configuration
 	if len(mcpServers) > 0 {
 		mcpNames := make([]string, 0, len(mcpServers))

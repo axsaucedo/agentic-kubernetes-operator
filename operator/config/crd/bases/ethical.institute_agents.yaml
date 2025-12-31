@@ -72,6 +72,28 @@ spec:
               config:
                 description: Config contains agent-specific configuration
                 properties:
+                  agenticLoop:
+                    description: AgenticLoop configures the agentic reasoning loop
+                    properties:
+                      enableDelegation:
+                        default: true
+                        description: EnableDelegation enables agent delegation in
+                          the agentic loop
+                        type: boolean
+                      enableTools:
+                        default: true
+                        description: EnableTools enables tool calling in the agentic
+                          loop
+                        type: boolean
+                      maxSteps:
+                        default: 5
+                        description: MaxSteps is the maximum number of reasoning steps
+                          before stopping
+                        format: int32
+                        maximum: 20
+                        minimum: 1
+                        type: integer
+                    type: object
                   description:
                     description: Description is a human-readable description of the
                       agent

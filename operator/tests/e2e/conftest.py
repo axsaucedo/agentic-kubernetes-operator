@@ -109,7 +109,9 @@ def create_mcpserver_resource(namespace: str, name: str = "echo-server") -> Dict
 
 
 def create_agent_resource(namespace: str, modelapi_name: str, mcpserver_names: list,
-                         agent_name: str = "echo-agent") -> Dict[str, Any]:
+                         agent_name: str = "echo-agent", 
+                         sub_agents: list = None,
+                         agentic_loop: dict = None) -> Dict[str, Any]:
     """Create an Agent resource.
 
     Args:
@@ -117,10 +119,25 @@ def create_agent_resource(namespace: str, modelapi_name: str, mcpserver_names: l
         modelapi_name: Name of ModelAPI resource to reference
         mcpserver_names: List of MCPServer names to connect to
         agent_name: Agent resource name
+        sub_agents: List of sub-agent names for delegation
+        agentic_loop: Agentic loop config dict with maxSteps, enableTools, enableDelegation
 
     Returns:
         Resource specification
     """
+    config = {
+        "description": "E2E test echo agent",
+        "instructions": "You are a helpful test assistant. You have access to an echo tool for testing.",
+        "env": [
+            {"name": "AGENT_LOG_LEVEL", "value": "INFO"},
+            {"name": "MODEL_NAME", "value": "smollm2:135m"},
+        ],
+    }
+    
+    # Add agentic loop config if provided
+    if agentic_loop:
+        config["agenticLoop"] = agentic_loop
+    
     return {
         "apiVersion": "ethical.institute/v1alpha1",
         "kind": "Agent",
@@ -131,17 +148,10 @@ def create_agent_resource(namespace: str, modelapi_name: str, mcpserver_names: l
         "spec": {
             "modelAPI": modelapi_name,
             "mcpServers": mcpserver_names,
-            "config": {
-                "description": "E2E test echo agent",
-                "instructions": "You are a helpful test assistant. You have access to an echo tool for testing.",
-                "env": [
-                    {"name": "AGENT_LOG_LEVEL", "value": "INFO"},
-                    {"name": "MODEL_NAME", "value": "smollm2:135m"},
-                ],
-            },
+            "config": config,
             "agentNetwork": {
                 "expose": True,
-                "access": [],
+                "access": sub_agents or [],
             },
             "replicas": 1,
             "resources": {

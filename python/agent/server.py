@@ -46,6 +46,11 @@ class AgentServerSettings(BaseSettings):
     # Individual URLs via PEER_AGENT_<NAME>_CARD_URL env vars
     peer_agents: str = ""
     
+    # Agentic loop configuration (from K8s operator)
+    agentic_loop_max_steps: int = 5
+    agentic_loop_enable_tools: bool = True
+    agentic_loop_enable_delegation: bool = True
+    
     # Debug settings (only enable in development/testing)
     agent_debug_memory_endpoints: bool = False
 
@@ -443,12 +448,21 @@ def create_agent_server(settings: AgentServerSettings = None, sub_agents: List[R
                     else:
                         logger.warning(f"No URL found for peer agent {peer_name} (expected {env_name})")
 
+    # Create agentic loop config from settings
+    from agent.client import AgenticLoopConfig
+    loop_config = AgenticLoopConfig(
+        max_steps=settings.agentic_loop_max_steps,
+        enable_tools=settings.agentic_loop_enable_tools,
+        enable_delegation=settings.agentic_loop_enable_delegation
+    )
+
     agent = Agent(
         name=settings.agent_name,
         description=settings.agent_description,
         instructions=settings.agent_instructions,
         model_api=model_api,
-        sub_agents=sub_agents
+        sub_agents=sub_agents,
+        loop_config=loop_config
     )
 
     server = AgentServer(
@@ -457,7 +471,7 @@ def create_agent_server(settings: AgentServerSettings = None, sub_agents: List[R
         debug_memory_endpoints=settings.agent_debug_memory_endpoints
     )
 
-    logger.info(f"Created agent server: {settings.agent_name} with {len(sub_agents)} sub-agents")
+    logger.info(f"Created agent server: {settings.agent_name} with {len(sub_agents)} sub-agents, loop_config={loop_config}")
     return server
 
 

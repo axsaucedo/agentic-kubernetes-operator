@@ -20,6 +20,25 @@ type AgentNetworkConfig struct {
 
 // +kubebuilder:object:generate=true
 
+// AgenticLoopConfig defines configuration for the agentic reasoning loop
+type AgenticLoopConfig struct {
+	// MaxSteps is the maximum number of reasoning steps before stopping
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=20
+	// +kubebuilder:default=5
+	MaxSteps int32 `json:"maxSteps,omitempty"`
+
+	// EnableTools enables tool calling in the agentic loop
+	// +kubebuilder:default=true
+	EnableTools *bool `json:"enableTools,omitempty"`
+
+	// EnableDelegation enables agent delegation in the agentic loop
+	// +kubebuilder:default=true
+	EnableDelegation *bool `json:"enableDelegation,omitempty"`
+}
+
+// +kubebuilder:object:generate=true
+
 // AgentConfig defines agent-specific configuration
 type AgentConfig struct {
 	// Description is a human-readable description of the agent
@@ -29,6 +48,10 @@ type AgentConfig struct {
 	// Instructions are the system instructions for the agent
 	// +kubebuilder:validation:Optional
 	Instructions string `json:"instructions,omitempty"`
+
+	// AgenticLoop configures the agentic reasoning loop
+	// +kubebuilder:validation:Optional
+	AgenticLoop *AgenticLoopConfig `json:"agenticLoop,omitempty"`
 
 	// Env variables to pass to the agent runtime
 	// +kubebuilder:validation:Optional

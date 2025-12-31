@@ -4,7 +4,6 @@ apiVersion: agentic.example.com/v1alpha1
 kind: Agent
 metadata:
   name: coordinator
-  namespace: default
 spec:
   modelAPI: ollama-proxy
   mcpServers: []
@@ -38,7 +37,6 @@ apiVersion: agentic.example.com/v1alpha1
 kind: Agent
 metadata:
   name: researcher
-  namespace: default
 spec:
   modelAPI: ollama-proxy
   mcpServers: []
@@ -70,7 +68,6 @@ apiVersion: agentic.example.com/v1alpha1
 kind: Agent
 metadata:
   name: analyst
-  namespace: default
 spec:
   modelAPI: ollama-proxy
   mcpServers:
