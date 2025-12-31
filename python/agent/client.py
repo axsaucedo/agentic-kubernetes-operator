@@ -66,75 +66,65 @@ class AgentCard:
 
 
 class RemoteAgent:
+    """Remote agent client for A2A protocol with graceful degradation."""
+
+    TIMEOUT = 5.0  # Short timeout - agent cards and invocations should be fast
 
     def __init__(self, name: str, card_url: str = None, agent_card_url: str = None):
-        # Handle legacy parameter
         url = card_url or agent_card_url
         if not url:
-            raise ValueError("card_url (or agent_card_url) is required")
+            raise ValueError("card_url is required")
         self.name = name
         self.card_url = url.rstrip('/')
         self.agent_card: Optional[AgentCard] = None
-
-        # HTTP client with reasonable timeout
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self._active = False
+        self._client = httpx.AsyncClient(timeout=self.TIMEOUT)
         logger.info(f"RemoteAgent initialized: {name} -> {url}")
 
-    async def discover(self) -> AgentCard:
+    async def _init(self) -> bool:
+        """Fetch agent card and activate. Returns True if successful."""
         try:
-            response = await self.client.get(f"{self.card_url}/.well-known/agent")
+            response = await self._client.get(f"{self.card_url}/.well-known/agent")
             response.raise_for_status()
-
-            card_data = response.json()
+            data = response.json()
             self.agent_card = AgentCard(
-                name=card_data.get("name", self.name),
-                description=card_data.get("description", ""),
-                url=self.card_url,  # Use the provided card_url, not the one from the response (which may be localhost)
-                skills=card_data.get("skills", []),
-                capabilities=card_data.get("capabilities", [])
+                name=data.get("name", self.name),
+                description=data.get("description", ""),
+                url=self.card_url,
+                skills=data.get("skills", []),
+                capabilities=data.get("capabilities", [])
             )
-
-            logger.info(f"Discovered remote agent: {self.name} at {self.card_url} - {self.agent_card.description}")
-            return self.agent_card
-
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to discover agent {self.name}: {e}")
-            raise
+            self._active = True
+            logger.info(f"RemoteAgent {self.name} active: {self.agent_card.description}")
+            return True
         except Exception as e:
-            logger.error(f"Unexpected error discovering agent {self.name}: {e}")
-            raise
+            self._active = False
+            logger.warning(f"RemoteAgent {self.name} init failed: {type(e).__name__}: {e}")
+            return False
 
     async def invoke(self, task: str) -> str:
-        if not self.agent_card:
-            await self.discover()
+        """Invoke agent. Re-inits if inactive. Raises RuntimeError on failure."""
+        if not self._active:
+            if not await self._init():
+                raise RuntimeError(f"Agent {self.name} unavailable at {self.card_url}")
 
         try:
-            response = await self.client.post(
-                f"{self.agent_card.url}/agent/invoke",
+            response = await self._client.post(
+                f"{self.card_url}/agent/invoke",
                 json={"task": task}
             )
             response.raise_for_status()
-
-            result = response.json()
-            response_text = result.get("response", str(result))
-
-            logger.debug(f"Remote agent {self.name} completed task")
-            return response_text
-
-        except httpx.HTTPError as e:
-            logger.error(f"Failed to invoke agent {self.name}: {e}")
-            raise
+            return response.json().get("response", "")
         except Exception as e:
-            logger.error(f"Unexpected error invoking agent {self.name}: {e}")
-            raise
+            self._active = False
+            raise RuntimeError(f"Agent {self.name}: {type(e).__name__}: {e}")
 
     async def close(self):
-        """Close HTTP client and cleanup resources."""
+        """Close HTTP client."""
         try:
-            await self.client.aclose()
-            logger.debug(f"RemoteAgent closed: {self.name}")
-        except Exception as e:
-            logger.warning(f"Error closing RemoteAgent {self.name}: {e}")
+            await self._client.aclose()
+        except Exception:
+            pass
 
 
 class Agent:
@@ -189,27 +179,35 @@ class Agent:
         return "\n".join(parts)
 
     async def _get_tools_description(self) -> str:
-        """Get formatted description of all available tools."""
+        """Get formatted description of all available tools, initing inactive clients."""
         tools_desc = []
         for mcp_client in self.mcp_clients:
+            if not mcp_client._active:
+                await mcp_client._init()
             for tool in mcp_client.get_tools():
                 params_str = json.dumps(tool.parameters, indent=2) if tool.parameters else "{}"
                 tools_desc.append(f"- **{tool.name}**: {tool.description}\n  Parameters: {params_str}")
         return "\n".join(tools_desc)
 
     async def _get_agents_description(self) -> str:
-        """Get formatted description of all available sub-agents."""
-        agents_desc = []
+        """Get formatted description of all sub-agents, attempting init for inactive ones."""
+        available = []
+        unavailable = []
+        
         for sub_agent in self.sub_agents.values():
-            if not sub_agent.agent_card:
-                try:
-                    await sub_agent.discover()
-                except Exception as e:
-                    logger.warning(f"Could not discover sub-agent {sub_agent.name}: {e}")
-                    continue
-            card = sub_agent.agent_card
-            agents_desc.append(f"- **{card.name}**: {card.description}")
-        return "\n".join(agents_desc)
+            if not sub_agent._active:
+                await sub_agent._init()
+            
+            if sub_agent._active and sub_agent.agent_card:
+                available.append(f"- **{sub_agent.agent_card.name}**: {sub_agent.agent_card.description}")
+            else:
+                unavailable.append(f"- **{sub_agent.name}**: (unavailable)")
+        
+        parts = available
+        if unavailable:
+            parts.append("\n**Unavailable agents:**")
+            parts.extend(unavailable)
+        return "\n".join(parts)
 
     def _parse_tool_call(self, content: str) -> Optional[Dict[str, Any]]:
         """Extract tool call JSON from model response."""
@@ -388,44 +386,35 @@ class Agent:
         raise ValueError(f"Tool '{tool_name}' not found in any tool client")
 
     async def delegate_to_sub_agent(self, agent_name: str, task: str, session_id: Optional[str] = None) -> str:
-        """Delegate a task to a sub-agent with memory logging.
-        
-        Args:
-            agent_name: Name of the sub-agent to delegate to
-            task: Task to delegate
-            session_id: Optional session ID for memory logging
-            
-            
-        Returns:
-            Response from the sub-agent
-        """
+        """Delegate a task to a sub-agent. Re-inits inactive agents automatically."""
         sub_agent = self.sub_agents.get(agent_name)
         if not sub_agent:
-            raise ValueError(f"Sub-agent '{agent_name}' not found")
+            raise ValueError(f"Sub-agent '{agent_name}' not found. Available: {list(self.sub_agents.keys())}")
         
         # Log delegation request
         if session_id:
-            delegation_event = self.memory.create_event(
-                "delegation_request",
-                {"agent": agent_name, "task": task}
-            )
-            await self.memory.add_event(session_id, delegation_event)
+            await self.memory.add_event(session_id, self.memory.create_event(
+                "delegation_request", {"agent": agent_name, "task": task}
+            ))
         
-        logger.info(f"Delegating to sub-agent {agent_name}: {task[:50]}...")
-        
-        # Invoke sub-agent
-        response = await sub_agent.invoke(task)
-        
-        # Log delegation response
-        if session_id:
-            response_event = self.memory.create_event(
-                "delegation_response",
-                {"agent": agent_name, "response": response}
-            )
-            await self.memory.add_event(session_id, response_event)
-        
-        logger.info(f"Received response from sub-agent {agent_name}")
-        return response
+        try:
+            response = await sub_agent.invoke(task)
+            
+            if session_id:
+                await self.memory.add_event(session_id, self.memory.create_event(
+                    "delegation_response", {"agent": agent_name, "response": response}
+                ))
+            return response
+            
+        except RuntimeError as e:
+            error_msg = str(e)
+            logger.warning(f"Delegation to {agent_name} failed: {error_msg}")
+            
+            if session_id:
+                await self.memory.add_event(session_id, self.memory.create_event(
+                    "delegation_error", {"agent": agent_name, "error": error_msg}
+                ))
+            return f"[Delegation failed: {error_msg}]"
 
     def get_agent_card(self, base_url: str) -> AgentCard:
         # Collect available tools

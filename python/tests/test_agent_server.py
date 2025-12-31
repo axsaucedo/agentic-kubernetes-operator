@@ -413,10 +413,11 @@ class TestMultiAgentCluster:
         
         remote = RemoteAgent(name="worker-1", card_url=worker_url)
         
-        # Discover
-        card = await remote.discover()
-        assert card.name == "worker-1"
-        assert "message_processing" in card.capabilities
+        # Init (discover)
+        success = await remote._init()
+        assert success
+        assert remote.agent_card.name == "worker-1"
+        assert "message_processing" in remote.agent_card.capabilities
         
         # Invoke
         response = await remote.invoke("Say hello from remote. Be brief.")

@@ -133,6 +133,11 @@ func (in *AgentSpec) DeepCopyInto(out *AgentSpec) {
 		*out = new(AgentConfig)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.WaitForDependencies != nil {
+		in, out := &in.WaitForDependencies, &out.WaitForDependencies
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Resources != nil {
 		in, out := &in.Resources, &out.Resources
 		*out = new(v1.ResourceRequirements)

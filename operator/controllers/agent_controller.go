@@ -94,7 +94,10 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	if !modelapi.Status.Ready {
+	// Check if we should wait for dependencies (default true)
+	waitForDeps := agent.Spec.WaitForDependencies == nil || *agent.Spec.WaitForDependencies
+
+	if !modelapi.Status.Ready && waitForDeps {
 		log.Info("ModelAPI not ready, waiting", "modelAPI", agent.Spec.ModelAPI)
 		agent.Status.Phase = "Waiting"
 		agent.Status.Message = "ModelAPI is not ready"
@@ -115,7 +118,7 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return ctrl.Result{}, err
 		}
 
-		if !mcp.Status.Ready {
+		if !mcp.Status.Ready && waitForDeps {
 			log.Info("MCPServer not ready, waiting", "mcpserver", mcpName)
 			agent.Status.Phase = "Waiting"
 			agent.Status.Message = fmt.Sprintf("MCPServer %s is not ready", mcpName)

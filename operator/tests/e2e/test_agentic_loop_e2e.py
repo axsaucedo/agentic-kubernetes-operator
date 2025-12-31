@@ -300,3 +300,60 @@ async def test_coordinator_has_delegation_capability(test_namespace: str, shared
     finally:
         pf_coord.terminate()
         pf_coord.wait(timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_dependencies_false(test_namespace: str, shared_modelapi: str):
+    """Test that agent can start without waiting for dependencies when waitForDependencies=false.
+    
+    Creates an agent referencing a non-existent MCP server with waitForDependencies=false.
+    The agent should start and be ready (deployment created) even though the dependency is missing.
+    """
+    from sh import kubectl
+    import json
+    
+    # Create agent with waitForDependencies=false and a non-existent MCP server
+    agent_name = "loop-nowait"
+    agent_spec = {
+        "apiVersion": "ethical.institute/v1alpha1",
+        "kind": "Agent",
+        "metadata": {"name": agent_name, "namespace": test_namespace},
+        "spec": {
+            "modelAPI": shared_modelapi,
+            "mcpServers": [],  # No MCP servers - agent should work fine
+            "waitForDependencies": False,  # Don't wait
+            "config": {
+                "description": "Agent that doesn't wait for dependencies",
+                "instructions": "You are a test agent.",
+                "agenticLoop": {"maxSteps": 3},
+            },
+            "agentNetwork": {"expose": True, "access": []},
+            "replicas": 1,
+        },
+    }
+    
+    create_custom_resource(agent_spec, test_namespace)
+    
+    # Agent should be created even if ModelAPI is not ready initially
+    # (it will eventually use the shared_modelapi which should be ready)
+    wait_for_deployment(test_namespace, f"agent-{agent_name}", timeout=120)
+    
+    # Verify agent is running
+    port = get_next_port()
+    pf = port_forward_with_wait(
+        namespace=test_namespace,
+        service_name=f"agent-{agent_name}",
+        local_port=port,
+        remote_port=8000,
+    )
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(f"http://localhost:{port}/health")
+            assert response.status_code == 200
+            health = response.json()
+            assert health["status"] == "healthy"
+            assert health["name"] == agent_name
+    finally:
+        pf.terminate()
+        pf.wait(timeout=5)

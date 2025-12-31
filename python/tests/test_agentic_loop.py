@@ -63,6 +63,7 @@ class MockMCPClient(MCPClient):
         """Initialize with tool definitions: {name: (description, result)}"""
         self._url = "mock://mcp"
         self._tools = {}
+        self._active = True  # Always active for mocks
         self.call_log = []
         
         tools = tools or {}
@@ -74,8 +75,8 @@ class MockMCPClient(MCPClient):
             )
             setattr(self, f"_result_{name}", result)
     
-    async def discover_tools(self):
-        pass
+    async def _init(self):
+        return True
     
     async def call_tool(self, name: str, args: dict):
         self.call_log.append({"tool": name, "args": args})
@@ -213,6 +214,7 @@ class TestAgenticLoopDelegation:
             'url': 'http://localhost:9999',
             'capabilities': ['task_execution']
         })()
+        mock_remote._active = True
         mock_remote.invoke = AsyncMock(return_value="Data processed")
         
         agent = Agent(
@@ -422,6 +424,7 @@ class TestMemoryEventTracking:
             'name': 'analyzer', 'description': 'Analyzer', 
             'url': 'http://localhost:9999', 'capabilities': []
         })()
+        mock_remote._active = True
         mock_remote.invoke = AsyncMock(return_value="Analysis complete")
         
         memory = LocalMemory()

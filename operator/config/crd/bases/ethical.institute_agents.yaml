@@ -283,6 +283,12 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              waitForDependencies:
+                default: true
+                description: |-
+                  WaitForDependencies controls whether the agent waits for ModelAPI and MCPServers to be ready
+                  before creating the deployment. Default is true.
+                type: boolean
             required:
             - modelAPI
             type: object

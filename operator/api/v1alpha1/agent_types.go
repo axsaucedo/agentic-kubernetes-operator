@@ -77,6 +77,11 @@ type AgentSpec struct {
 	// +kubebuilder:validation:Optional
 	Config *AgentConfig `json:"config,omitempty"`
 
+	// WaitForDependencies controls whether the agent waits for ModelAPI and MCPServers to be ready
+	// before creating the deployment. Default is true.
+	// +kubebuilder:default=true
+	WaitForDependencies *bool `json:"waitForDependencies,omitempty"`
+
 	// Resources defines compute resources for the agent
 	// +kubebuilder:validation:Optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
