@@ -2,18 +2,47 @@
 Agent client implementation following Google ADK patterns.
 
 Clean, simple implementation with proper streaming support and tool integration.
+Includes agentic loop for tool calling and agent delegation.
 """
 
+import json
+import re
 import logging
 from typing import List, Dict, Any, Optional, AsyncIterator
 import httpx
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from modelapi.client import ModelAPI
 from agent.memory import LocalMemory, MemoryEvent
 from mcptools.client import MCPClient
 
 logger = logging.getLogger(__name__)
+
+
+# System prompt templates for agentic loop
+TOOLS_INSTRUCTIONS = """
+To use a tool, respond with a JSON block in this exact format:
+```tool_call
+{"tool": "tool_name", "arguments": {"arg1": "value1"}}
+```
+Wait for the tool result before providing your final answer.
+"""
+
+AGENT_INSTRUCTIONS = """
+To delegate a task to another agent, respond with:
+```delegate
+{"agent": "agent_name", "task": "task description"}
+```
+Wait for the agent's response before providing your final answer.
+"""
+
+
+@dataclass
+class AgenticLoopConfig:
+    """Configuration for the agentic reasoning loop."""
+    max_steps: int = 5  # Maximum reasoning steps to prevent infinite loops
+    enable_tools: bool = True  # Whether to enable tool calling
+    enable_delegation: bool = True  # Whether to enable agent delegation
 
 
 @dataclass
@@ -109,7 +138,7 @@ class RemoteAgent:
 
 
 class Agent:
-    """Simple Agent class following Google ADK patterns."""
+    """Simple Agent class following Google ADK patterns with agentic loop support."""
 
     def __init__(
         self,
@@ -117,17 +146,19 @@ class Agent:
         model_api: ModelAPI,
         instructions: str = "You are a helpful agent",
         description: str = "Agent",
-        memory: LocalMemory = LocalMemory(),
-        mcp_clients: List[MCPClient] = [],
-        sub_agents: List[RemoteAgent] = []):
+        memory: LocalMemory = None,
+        mcp_clients: List[MCPClient] = None,
+        sub_agents: List[RemoteAgent] = None,
+        loop_config: AgenticLoopConfig = None):
 
         self.name = name
         self.instructions = instructions
         self.model_api = model_api
-        self.memory = memory
+        self.memory = memory or LocalMemory()
         self.description = description
-        self.mcp_clients = mcp_clients
-        self.sub_agents = sub_agents
+        self.mcp_clients = mcp_clients or []
+        self.sub_agents = sub_agents or []
+        self.loop_config = loop_config or AgenticLoopConfig()
 
         logger.info(f"Agent initialized: {name}")
 
@@ -135,19 +166,84 @@ class Agent:
         """Initialize the agent (no-op, kept for API compatibility)."""
         pass
 
+    async def _build_system_prompt(self) -> str:
+        """Build enhanced system prompt with tools and agents info."""
+        parts = [self.instructions]
+        
+        # Add tools info if enabled and available
+        if self.loop_config.enable_tools and self.mcp_clients:
+            tools_info = await self._get_tools_description()
+            if tools_info:
+                parts.append("\n## Available Tools\n" + tools_info)
+                parts.append(TOOLS_INSTRUCTIONS)
+        
+        # Add agents info if enabled and available
+        if self.loop_config.enable_delegation and self.sub_agents:
+            agents_info = await self._get_agents_description()
+            if agents_info:
+                parts.append("\n## Available Agents for Delegation\n" + agents_info)
+                parts.append(AGENT_INSTRUCTIONS)
+        
+        return "\n".join(parts)
+
+    async def _get_tools_description(self) -> str:
+        """Get formatted description of all available tools."""
+        tools_desc = []
+        for mcp_client in self.mcp_clients:
+            for tool in mcp_client.get_tools():
+                params_str = json.dumps(tool.parameters, indent=2) if tool.parameters else "{}"
+                tools_desc.append(f"- **{tool.name}**: {tool.description}\n  Parameters: {params_str}")
+        return "\n".join(tools_desc)
+
+    async def _get_agents_description(self) -> str:
+        """Get formatted description of all available sub-agents."""
+        agents_desc = []
+        for sub_agent in self.sub_agents:
+            if not sub_agent.agent_card:
+                try:
+                    await sub_agent.discover()
+                except Exception as e:
+                    logger.warning(f"Could not discover sub-agent {sub_agent.name}: {e}")
+                    continue
+            card = sub_agent.agent_card
+            agents_desc.append(f"- **{card.name}**: {card.description}")
+        return "\n".join(agents_desc)
+
+    def _parse_tool_call(self, content: str) -> Optional[Dict[str, Any]]:
+        """Extract tool call JSON from model response."""
+        match = re.search(r'```tool_call\s*\n({.*?})\s*\n```', content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse tool call JSON: {e}")
+        return None
+
+    def _parse_delegation(self, content: str) -> Optional[Dict[str, Any]]:
+        """Extract delegation JSON from model response."""
+        match = re.search(r'```delegate\s*\n({.*?})\s*\n```', content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError as e:
+                logger.warning(f"Failed to parse delegation JSON: {e}")
+        return None
+
 
     async def process_message(
         self,
         message: str,
         session_id: Optional[str] = None,
-        stream: bool = False
+        stream: bool = False,
+        mock_response: Optional[str] = None
     ) -> AsyncIterator[str]:
-        """Process a message and return response (streaming or non-streaming).
+        """Process a message with agentic loop for tool calling and delegation.
 
         Args:
             message: User message to process
             session_id: Optional session ID (created if not provided)
             stream: Whether to stream the response
+            mock_response: Mock response for testing (bypasses LLM call)
 
         Yields:
             Content chunks (streaming) or single complete response (non-streaming)
@@ -162,45 +258,97 @@ class Agent:
         user_event = self.memory.create_event("user_message", message)
         await self.memory.add_event(session_id, user_event)
 
-        # TODO: Make the adding of context optional and disabled by default such that
-        #    it is enabled with a config variable (as part of context) such that it allows
-        #    for reduction of "magic" bastractions that happen witout explicit
-        # TODO: k8s - ensure that kubernetes operator also extends the CRD to enabel context 
-        #    via CRD parameters such as context: enabled / context: max_events which would
-        #    translate into a set of env variables that should be accepted
-        # TODO: Ensure that the context built is on the same format as the openai compliant
-        #    Messages such as role system/user/agent as right now it's not compatible and would
-        #   be best to have them lie this
-        context = await self.memory.build_conversation_context(session_id)
-
-        messages = [{"role": "system", "content": self.instructions}]
-        if context:
-            messages.append({"role": "user", "content": context})
+        # Build enhanced system prompt with tools/agents info
+        system_prompt = await self._build_system_prompt()
+        
+        # Initialize conversation
+        messages = [{"role": "system", "content": system_prompt}]
         messages.append({"role": "user", "content": message})
 
         try:
-            if stream:
-                # Streaming response
-                response_chunks = []
-                async for chunk in self.model_api.stream(messages):
-                    response_chunks.append(chunk)
-                    yield chunk
-
-                # Log complete response
-                complete_response = "".join(response_chunks)
-                response_event = self.memory.create_event("agent_response", complete_response)
-                await self.memory.add_event(session_id, response_event)
-
-            else:
-                # Non-streaming response
-                response = await self.model_api.complete(messages)
-                content = response["choices"][0]["message"]["content"]
-
-                # Log response
+            # Agentic loop - iterate up to max_steps
+            for step in range(self.loop_config.max_steps):
+                logger.debug(f"Agentic loop step {step + 1}/{self.loop_config.max_steps}")
+                
+                # Get model response
+                if mock_response and step == 0:
+                    # Use mock response for first step (for testing)
+                    content = mock_response
+                else:
+                    response = await self.model_api.complete(messages)
+                    content = response["choices"][0]["message"]["content"]
+                
+                # Check for tool call
+                if self.loop_config.enable_tools:
+                    tool_call = self._parse_tool_call(content)
+                    if tool_call:
+                        # Log tool call
+                        tool_event = self.memory.create_event("tool_call", tool_call)
+                        await self.memory.add_event(session_id, tool_event)
+                        
+                        # Execute tool
+                        try:
+                            tool_name = tool_call.get("tool")
+                            tool_args = tool_call.get("arguments", {})
+                            tool_result = await self.execute_tool(tool_name, tool_args)
+                            
+                            # Log tool result
+                            result_event = self.memory.create_event("tool_result", {
+                                "tool": tool_name, "result": tool_result
+                            })
+                            await self.memory.add_event(session_id, result_event)
+                            
+                            # Add to conversation and continue loop
+                            messages.append({"role": "assistant", "content": content})
+                            messages.append({"role": "user", "content": f"Tool result: {json.dumps(tool_result)}"})
+                            continue
+                            
+                        except Exception as e:
+                            error_msg = f"Tool execution failed: {str(e)}"
+                            messages.append({"role": "assistant", "content": content})
+                            messages.append({"role": "user", "content": error_msg})
+                            continue
+                
+                # Check for delegation
+                if self.loop_config.enable_delegation:
+                    delegation = self._parse_delegation(content)
+                    if delegation:
+                        agent_name = delegation.get("agent")
+                        task = delegation.get("task")
+                        
+                        try:
+                            # Delegate to sub-agent (this logs events internally)
+                            delegation_result = await self.delegate_to_sub_agent(
+                                agent_name, task, session_id
+                            )
+                            
+                            # Add to conversation and continue loop
+                            messages.append({"role": "assistant", "content": content})
+                            messages.append({"role": "user", "content": f"Agent response: {delegation_result}"})
+                            continue
+                            
+                        except ValueError as e:
+                            error_msg = f"Delegation failed: {str(e)}"
+                            messages.append({"role": "assistant", "content": content})
+                            messages.append({"role": "user", "content": error_msg})
+                            continue
+                
+                # No tool call or delegation - this is the final response
                 response_event = self.memory.create_event("agent_response", content)
                 await self.memory.add_event(session_id, response_event)
-
-                yield content
+                
+                if stream:
+                    # For streaming, yield word by word (simplified)
+                    for word in content.split():
+                        yield word + " "
+                else:
+                    yield content
+                return
+            
+            # Max steps reached
+            max_steps_msg = f"Reached maximum reasoning steps ({self.loop_config.max_steps})"
+            logger.warning(max_steps_msg)
+            yield max_steps_msg
 
         except Exception as e:
             error_msg = f"Error processing message: {str(e)}"
@@ -229,6 +377,8 @@ class Agent:
         Returns:
             Response from the sub-agent
         """
+        # TODO: Update self.sub_agents to be a dict instead as this woudl allow more efficient
+        #    access across these and easier ability to access available sub_agents
         for sub_agent in self.sub_agents:
             if sub_agent.name == agent_name:
                 # Log delegation request

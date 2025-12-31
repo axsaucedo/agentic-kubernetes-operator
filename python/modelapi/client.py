@@ -45,11 +45,12 @@ class ModelAPI:
 
         logger.info(f"ModelAPI initialized: model={self.model}, api_base={self.api_base}")
 
-    async def complete(self, messages: List[Dict]) -> Dict:
+    async def complete(self, messages: List[Dict], mock_response: str = None) -> Dict:
         """Non-streaming chat completion.
 
         Args:
             messages: OpenAI-format messages (e.g., [{"role": "user", "content": "Hello"}])
+            mock_response: Optional mock response for testing (passed to LiteLLM-compatible servers)
 
         Returns:
             OpenAI-format response dict
@@ -63,6 +64,10 @@ class ModelAPI:
             "messages": messages,
             "stream": False
         }
+        
+        # Add mock_response if provided (LiteLLM feature for testing)
+        if mock_response:
+            payload["mock_response"] = mock_response
 
         try:
             response = await self.client.post("/v1/chat/completions", json=payload)
@@ -86,11 +91,12 @@ class ModelAPI:
             logger.error(f"Unexpected error in completion: {e}")
             raise
 
-    async def stream(self, messages: List[Dict]) -> AsyncIterator[str]:
+    async def stream(self, messages: List[Dict], mock_response: str = None) -> AsyncIterator[str]:
         """Streaming chat completion with proper SSE parsing.
 
         Args:
             messages: OpenAI-format messages
+            mock_response: Optional mock response for testing
 
         Yields:
             Content chunks from the response
@@ -104,6 +110,10 @@ class ModelAPI:
             "messages": messages,
             "stream": True
         }
+        
+        # Add mock_response if provided
+        if mock_response:
+            payload["mock_response"] = mock_response
 
         try:
             async with self.client.stream(

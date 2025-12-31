@@ -196,7 +196,11 @@ class AgentServer:
                         content = msg.get("content", "")
                         return await self._handle_delegation(content, model_name)
 
-                # Extract user message (simple approach)
+                # TODO: Extend such that we process the full list of messages as we 
+                #    support openai compaible endpoints which means that we should be 
+                #    sending the full context as opposed to only a fraction.
+                #    this is aligned with the TODO in the agent (client) which requests
+                #    to extend to also support open ai style array
                 user_content = ""
                 for msg in messages:
                     if msg.get("role") == "user":

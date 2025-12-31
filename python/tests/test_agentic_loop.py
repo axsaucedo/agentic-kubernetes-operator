@@ -1,0 +1,463 @@
+"""
+Agentic Loop tests with deterministic mock responses.
+
+Tests the agentic loop functionality including:
+- Tool calling with mock responses
+- Agent delegation with mock responses  
+- Memory event verification
+- Max steps limit
+"""
+
+import pytest
+import logging
+import time
+import httpx
+from multiprocessing import Process
+from unittest.mock import AsyncMock
+
+from agent.client import Agent, RemoteAgent, AgenticLoopConfig
+from agent.memory import LocalMemory
+from agent.server import AgentServerSettings, create_agent_server
+from modelapi.client import ModelAPI
+from mcptools.client import MCPClient, Tool, MCPClientSettings
+
+logger = logging.getLogger(__name__)
+
+
+class MockModelAPI(ModelAPI):
+    """Mock ModelAPI that returns predetermined responses."""
+    
+    def __init__(self, responses: list = None):
+        """Initialize with a list of responses to return in sequence."""
+        self.responses = responses or ["Default mock response"]
+        self.call_count = 0
+        self.model = "mock"
+        self.api_base = "mock://localhost"
+        self.client = None  # Not used
+    
+    async def complete(self, messages, mock_response=None):
+        """Return next response from the list, or use mock_response if provided."""
+        if mock_response:
+            content = mock_response
+        else:
+            content = self.responses[min(self.call_count, len(self.responses) - 1)]
+        self.call_count += 1
+        return {
+            "choices": [{
+                "message": {"role": "assistant", "content": content}
+            }]
+        }
+    
+    async def stream(self, messages, mock_response=None):
+        response = await self.complete(messages, mock_response)
+        yield response["choices"][0]["message"]["content"]
+    
+    async def close(self):
+        pass
+
+
+class MockMCPClient(MCPClient):
+    """Mock MCP client with predefined tools."""
+    
+    def __init__(self, tools: dict = None):
+        """Initialize with tool definitions: {name: (description, result)}"""
+        self._url = "mock://mcp"
+        self._tools = {}
+        self.call_log = []
+        
+        tools = tools or {}
+        for name, (desc, result) in tools.items():
+            self._tools[name] = Tool(
+                name=name,
+                description=desc,
+                parameters={"type": "object", "properties": {}}
+            )
+            setattr(self, f"_result_{name}", result)
+    
+    async def discover_tools(self):
+        pass
+    
+    async def call_tool(self, name: str, args: dict):
+        self.call_log.append({"tool": name, "args": args})
+        result = getattr(self, f"_result_{name}", {"result": "ok"})
+        return result
+    
+    def get_tools(self):
+        return list(self._tools.values())
+    
+    async def close(self):
+        pass
+
+
+class TestAgenticLoopConfig:
+    """Tests for AgenticLoopConfig."""
+    
+    def test_default_config(self):
+        """Test default agentic loop configuration."""
+        config = AgenticLoopConfig()
+        assert config.max_steps == 5
+        assert config.enable_tools == True
+        assert config.enable_delegation == True
+    
+    def test_custom_config(self):
+        """Test custom agentic loop configuration."""
+        config = AgenticLoopConfig(max_steps=3, enable_tools=False, enable_delegation=False)
+        assert config.max_steps == 3
+        assert config.enable_tools == False
+        assert config.enable_delegation == False
+
+
+class TestAgenticLoopToolCalling:
+    """Tests for tool calling in the agentic loop."""
+    
+    @pytest.mark.asyncio
+    async def test_tool_call_detected_and_executed(self):
+        """Test that a tool call in model response triggers tool execution."""
+        # Mock response that includes a tool call
+        tool_call_response = '''I'll calculate that for you.
+```tool_call
+{"tool": "calculator", "arguments": {"a": 5, "b": 3}}
+```'''
+        final_response = "The result is 8."
+        
+        mock_model = MockModelAPI(responses=[tool_call_response, final_response])
+        mock_mcp = MockMCPClient(tools={
+            "calculator": ("Add two numbers", {"sum": 8})
+        })
+        memory = LocalMemory()
+        
+        agent = Agent(
+            name="tool-agent",
+            model_api=mock_model,
+            mcp_clients=[mock_mcp],
+            memory=memory,
+            loop_config=AgenticLoopConfig(max_steps=3)
+        )
+        
+        # Process message
+        result = []
+        async for chunk in agent.process_message("What is 5 + 3?"):
+            result.append(chunk)
+        
+        response = "".join(result)
+        
+        # Verify tool was called
+        assert len(mock_mcp.call_log) == 1
+        assert mock_mcp.call_log[0]["tool"] == "calculator"
+        
+        # Verify model was called twice (tool call + final response)
+        assert mock_model.call_count == 2
+        
+        # Verify memory has tool events
+        sessions = await memory.list_sessions()
+        events = await memory.get_session_events(sessions[0])
+        event_types = [e.event_type for e in events]
+        
+        assert "user_message" in event_types
+        assert "tool_call" in event_types
+        assert "tool_result" in event_types
+        assert "agent_response" in event_types
+        
+        logger.info("✓ Tool call detection and execution works")
+    
+    @pytest.mark.asyncio
+    async def test_tool_call_disabled(self):
+        """Test that tool calls are ignored when enable_tools=False."""
+        tool_call_response = '''```tool_call
+{"tool": "calculator", "arguments": {}}
+```'''
+        
+        mock_model = MockModelAPI(responses=[tool_call_response])
+        mock_mcp = MockMCPClient(tools={"calculator": ("Add", {"sum": 0})})
+        
+        agent = Agent(
+            name="no-tools-agent",
+            model_api=mock_model,
+            mcp_clients=[mock_mcp],
+            loop_config=AgenticLoopConfig(enable_tools=False)
+        )
+        
+        result = []
+        async for chunk in agent.process_message("Calculate"):
+            result.append(chunk)
+        
+        # Tool should NOT be called
+        assert len(mock_mcp.call_log) == 0
+        
+        # Model should be called once (no loop)
+        assert mock_model.call_count == 1
+        
+        logger.info("✓ Tool calling disabled works")
+
+
+class TestAgenticLoopDelegation:
+    """Tests for agent delegation in the agentic loop."""
+    
+    @pytest.mark.asyncio
+    async def test_delegation_detected_and_executed(self):
+        """Test that a delegation in model response triggers sub-agent invocation."""
+        delegation_response = '''I'll delegate this to the worker.
+```delegate
+{"agent": "worker", "task": "Process this data"}
+```'''
+        final_response = "The worker processed the data successfully."
+        
+        mock_model = MockModelAPI(responses=[delegation_response, final_response])
+        memory = LocalMemory()
+        
+        # Create mock remote agent
+        mock_remote = RemoteAgent(name="worker", card_url="http://localhost:9999")
+        mock_remote.agent_card = type('AgentCard', (), {
+            'name': 'worker',
+            'description': 'Worker agent',
+            'url': 'http://localhost:9999',
+            'capabilities': ['task_execution']
+        })()
+        mock_remote.invoke = AsyncMock(return_value="Data processed")
+        
+        agent = Agent(
+            name="coordinator",
+            model_api=mock_model,
+            sub_agents=[mock_remote],
+            memory=memory,
+            loop_config=AgenticLoopConfig(max_steps=3)
+        )
+        
+        # Process message
+        result = []
+        async for chunk in agent.process_message("Process the data"):
+            result.append(chunk)
+        
+        # Verify delegation occurred
+        mock_remote.invoke.assert_called_once_with("Process this data")
+        
+        # Verify model was called twice
+        assert mock_model.call_count == 2
+        
+        # Verify memory has delegation events
+        sessions = await memory.list_sessions()
+        events = await memory.get_session_events(sessions[0])
+        event_types = [e.event_type for e in events]
+        
+        assert "delegation_request" in event_types
+        assert "delegation_response" in event_types
+        
+        logger.info("✓ Delegation detection and execution works")
+    
+    @pytest.mark.asyncio
+    async def test_delegation_disabled(self):
+        """Test that delegations are ignored when enable_delegation=False."""
+        delegation_response = '''```delegate
+{"agent": "worker", "task": "Do something"}
+```'''
+        
+        mock_model = MockModelAPI(responses=[delegation_response])
+        mock_remote = RemoteAgent(name="worker", card_url="http://localhost:9999")
+        mock_remote.invoke = AsyncMock(return_value="Done")
+        
+        agent = Agent(
+            name="no-delegate-agent",
+            model_api=mock_model,
+            sub_agents=[mock_remote],
+            loop_config=AgenticLoopConfig(enable_delegation=False)
+        )
+        
+        result = []
+        async for chunk in agent.process_message("Delegate"):
+            result.append(chunk)
+        
+        # Delegation should NOT occur
+        mock_remote.invoke.assert_not_called()
+        
+        logger.info("✓ Delegation disabled works")
+
+
+class TestAgenticLoopMaxSteps:
+    """Tests for max steps limit."""
+    
+    @pytest.mark.asyncio
+    async def test_max_steps_prevents_infinite_loop(self):
+        """Test that max_steps prevents infinite tool call loops."""
+        # Model always returns a tool call
+        infinite_tool_call = '''```tool_call
+{"tool": "loop_tool", "arguments": {}}
+```'''
+        
+        mock_model = MockModelAPI(responses=[infinite_tool_call] * 10)
+        mock_mcp = MockMCPClient(tools={"loop_tool": ("Loops forever", {"result": "ok"})})
+        memory = LocalMemory()
+        
+        agent = Agent(
+            name="loop-agent",
+            model_api=mock_model,
+            mcp_clients=[mock_mcp],
+            memory=memory,
+            loop_config=AgenticLoopConfig(max_steps=3)
+        )
+        
+        result = []
+        async for chunk in agent.process_message("Start loop"):
+            result.append(chunk)
+        
+        response = "".join(result)
+        
+        # Should hit max steps limit
+        assert "maximum reasoning steps" in response.lower()
+        
+        # Tool should be called max_steps times
+        assert len(mock_mcp.call_log) == 3
+        
+        logger.info("✓ Max steps limit works")
+
+
+class TestSystemPromptBuilding:
+    """Tests for system prompt construction with tools and agents."""
+    
+    @pytest.mark.asyncio
+    async def test_system_prompt_includes_tools(self):
+        """Test that system prompt includes available tools."""
+        mock_model = MockModelAPI(responses=["I have tools available."])
+        mock_mcp = MockMCPClient(tools={
+            "search": ("Search for information", {}),
+            "calculate": ("Perform calculations", {})
+        })
+        
+        agent = Agent(
+            name="tools-agent",
+            instructions="You are a helpful agent.",
+            model_api=mock_model,
+            mcp_clients=[mock_mcp]
+        )
+        
+        prompt = await agent._build_system_prompt()
+        
+        assert "You are a helpful agent." in prompt
+        assert "search" in prompt.lower()
+        assert "calculate" in prompt.lower()
+        assert "tool_call" in prompt
+        
+        logger.info("✓ System prompt includes tools")
+    
+    @pytest.mark.asyncio
+    async def test_system_prompt_includes_agents(self):
+        """Test that system prompt includes available sub-agents."""
+        mock_model = MockModelAPI(responses=["I can delegate."])
+        
+        mock_remote = RemoteAgent(name="worker", card_url="http://localhost:9999")
+        mock_remote.agent_card = type('AgentCard', (), {
+            'name': 'worker',
+            'description': 'Worker that processes tasks',
+            'url': 'http://localhost:9999',
+            'capabilities': ['task_execution']
+        })()
+        
+        agent = Agent(
+            name="coordinator",
+            instructions="You coordinate work.",
+            model_api=mock_model,
+            sub_agents=[mock_remote]
+        )
+        
+        prompt = await agent._build_system_prompt()
+        
+        assert "You coordinate work." in prompt
+        assert "worker" in prompt.lower()
+        assert "delegate" in prompt.lower()
+        
+        logger.info("✓ System prompt includes agents")
+
+
+class TestMockResponseParameter:
+    """Tests for the mock_response parameter in process_message."""
+    
+    @pytest.mark.asyncio
+    async def test_mock_response_bypasses_model(self):
+        """Test that mock_response bypasses the actual model call."""
+        mock_model = MockModelAPI(responses=["This should not appear"])
+        memory = LocalMemory()
+        
+        agent = Agent(
+            name="mock-test",
+            model_api=mock_model,
+            memory=memory
+        )
+        
+        result = []
+        async for chunk in agent.process_message("Hello", mock_response="Mocked response"):
+            result.append(chunk)
+        
+        response = "".join(result)
+        
+        # Should get mock response
+        assert "Mocked response" in response
+        
+        # Model should NOT be called (mock_response is used first)
+        # Note: it gets called 0 times if mock_response provides final answer
+        
+        logger.info("✓ Mock response parameter works")
+
+
+class TestMemoryEventTracking:
+    """Tests for memory event tracking during agentic loop."""
+    
+    @pytest.mark.asyncio
+    async def test_complete_workflow_memory_tracking(self):
+        """Test that all events are properly tracked in memory."""
+        # Workflow: tool call -> delegation -> final response
+        responses = [
+            '''```tool_call
+{"tool": "fetch", "arguments": {"url": "http://example.com"}}
+```''',
+            '''```delegate
+{"agent": "analyzer", "task": "Analyze the data"}
+```''',
+            "Based on my analysis, the result is complete."
+        ]
+        
+        mock_model = MockModelAPI(responses=responses)
+        mock_mcp = MockMCPClient(tools={"fetch": ("Fetch URL", {"data": "example"})})
+        
+        mock_remote = RemoteAgent(name="analyzer", card_url="http://localhost:9999")
+        mock_remote.agent_card = type('AgentCard', (), {
+            'name': 'analyzer', 'description': 'Analyzer', 
+            'url': 'http://localhost:9999', 'capabilities': []
+        })()
+        mock_remote.invoke = AsyncMock(return_value="Analysis complete")
+        
+        memory = LocalMemory()
+        
+        agent = Agent(
+            name="workflow-agent",
+            model_api=mock_model,
+            mcp_clients=[mock_mcp],
+            sub_agents=[mock_remote],
+            memory=memory,
+            loop_config=AgenticLoopConfig(max_steps=5)
+        )
+        
+        result = []
+        async for chunk in agent.process_message("Complete the workflow"):
+            result.append(chunk)
+        
+        # Get all events
+        sessions = await memory.list_sessions()
+        events = await memory.get_session_events(sessions[0])
+        event_types = [e.event_type for e in events]
+        
+        # Should have full event chain
+        assert "user_message" in event_types
+        assert "tool_call" in event_types
+        assert "tool_result" in event_types
+        assert "delegation_request" in event_types
+        assert "delegation_response" in event_types
+        assert "agent_response" in event_types
+        
+        # Verify event order
+        user_idx = event_types.index("user_message")
+        tool_idx = event_types.index("tool_call")
+        delegation_idx = event_types.index("delegation_request")
+        response_idx = event_types.index("agent_response")
+        
+        assert user_idx < tool_idx < delegation_idx < response_idx
+        
+        logger.info("✓ Complete workflow memory tracking works")

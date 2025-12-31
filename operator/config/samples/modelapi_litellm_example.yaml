@@ -2,7 +2,6 @@ apiVersion: agentic.example.com/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama-proxy
-  namespace: default
 spec:
   mode: Proxy
   proxyConfig:
