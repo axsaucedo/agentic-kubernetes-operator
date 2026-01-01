@@ -10,31 +10,12 @@ import (
 // AgentNetworkConfig defines A2A communication settings
 type AgentNetworkConfig struct {
 	// Expose indicates if this agent exposes an Agent Card endpoint for A2A
-	// +kubebuilder:validation:Optional
-	Expose bool `json:"expose,omitempty"`
+	// +kubebuilder:default=true
+	Expose *bool `json:"expose,omitempty"`
 
 	// Access is the allowlist of peer agent names this agent can call
 	// +kubebuilder:validation:Optional
 	Access []string `json:"access,omitempty"`
-}
-
-// +kubebuilder:object:generate=true
-
-// AgenticLoopConfig defines configuration for the agentic reasoning loop
-type AgenticLoopConfig struct {
-	// MaxSteps is the maximum number of reasoning steps before stopping
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=20
-	// +kubebuilder:default=5
-	MaxSteps int32 `json:"maxSteps,omitempty"`
-
-	// EnableTools enables tool calling in the agentic loop
-	// +kubebuilder:default=true
-	EnableTools *bool `json:"enableTools,omitempty"`
-
-	// EnableDelegation enables agent delegation in the agentic loop
-	// +kubebuilder:default=true
-	EnableDelegation *bool `json:"enableDelegation,omitempty"`
 }
 
 // +kubebuilder:object:generate=true
@@ -49,9 +30,11 @@ type AgentConfig struct {
 	// +kubebuilder:validation:Optional
 	Instructions string `json:"instructions,omitempty"`
 
-	// AgenticLoop configures the agentic reasoning loop
-	// +kubebuilder:validation:Optional
-	AgenticLoop *AgenticLoopConfig `json:"agenticLoop,omitempty"`
+	// ReasoningLoopMaxSteps is the maximum number of reasoning steps before stopping
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=20
+	// +kubebuilder:default=5
+	ReasoningLoopMaxSteps *int32 `json:"reasoningLoopMaxSteps,omitempty"`
 
 	// Env variables to pass to the agent runtime
 	// +kubebuilder:validation:Optional
@@ -82,14 +65,9 @@ type AgentSpec struct {
 	// +kubebuilder:default=true
 	WaitForDependencies *bool `json:"waitForDependencies,omitempty"`
 
-	// Resources defines compute resources for the agent
+	// PodSpec allows overriding the generated pod spec using strategic merge patch
 	// +kubebuilder:validation:Optional
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
-
-	// Replicas is the desired number of agent replicas
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Optional
-	Replicas *int32 `json:"replicas,omitempty"`
+	PodSpec *corev1.PodSpec `json:"podSpec,omitempty"`
 }
 
 // +kubebuilder:object:generate=true
@@ -97,14 +75,11 @@ type AgentSpec struct {
 // AgentStatus defines the observed state of Agent
 type AgentStatus struct {
 	// Phase of the deployment
-	// +kubebuilder:validation:Enum=Pending;Ready;Failed
+	// +kubebuilder:validation:Enum=Pending;Ready;Failed;Waiting
 	Phase string `json:"phase,omitempty"`
 
 	// Ready indicates if the agent is ready
 	Ready bool `json:"ready,omitempty"`
-
-	// ObservedReplicas is the number of observed agent replicas
-	ObservedReplicas int32 `json:"observedReplicas,omitempty"`
 
 	// Endpoint is the Agent Card HTTP endpoint for A2A communication
 	// +kubebuilder:validation:Optional
@@ -120,10 +95,8 @@ type AgentStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.observedReplicas
 // +kubebuilder:resource:shortName=agent;agents
 // +kubebuilder:printcolumn:name="ModelAPI",type=string,JSONPath=`.spec.modelAPI`
-// +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.status.observedReplicas`
 // +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=`.status.ready`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 

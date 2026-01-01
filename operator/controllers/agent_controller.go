@@ -184,8 +184,9 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	// Create or update A2A Service (if expose is enabled)
-	if agent.Spec.AgentNetwork != nil && agent.Spec.AgentNetwork.Expose {
+	// Create or update A2A Service (if expose is enabled - default true)
+	exposeEnabled := agent.Spec.AgentNetwork == nil || agent.Spec.AgentNetwork.Expose == nil || *agent.Spec.AgentNetwork.Expose
+	if exposeEnabled {
 		service := &corev1.Service{}
 		serviceName := fmt.Sprintf("agent-%s", agent.Name)
 		err = r.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: agent.Namespace}, service)
@@ -222,11 +223,9 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if deployment.Status.ReadyReplicas > 0 {
 		agent.Status.Ready = true
 		agent.Status.Phase = "Ready"
-		agent.Status.ObservedReplicas = deployment.Status.ReadyReplicas
 	} else {
 		agent.Status.Phase = "Pending"
 		agent.Status.Ready = false
-		agent.Status.ObservedReplicas = deployment.Status.AvailableReplicas
 	}
 
 	agent.Status.Message = fmt.Sprintf("Deployment ready replicas: %d/%d", deployment.Status.ReadyReplicas, *deployment.Spec.Replicas)
@@ -247,9 +246,6 @@ func (r *AgentReconciler) constructDeployment(agent *agenticv1alpha1.Agent, mode
 	}
 
 	replicas := int32(1)
-	if agent.Spec.Replicas != nil {
-		replicas = *agent.Spec.Replicas
-	}
 
 	// Build environment variables
 	env := r.constructEnvVars(agent, modelapi, mcpServers, peerAgents)
@@ -288,11 +284,6 @@ func (r *AgentReconciler) constructDeployment(agent *agenticv1alpha1.Agent, mode
 			InitialDelaySeconds: 10,
 			PeriodSeconds:       5,
 		},
-	}
-
-	// Add resource requests if specified
-	if agent.Spec.Resources != nil {
-		container.Resources = *agent.Spec.Resources
 	}
 
 	deployment := &appsv1.Deployment{
@@ -390,27 +381,12 @@ func (r *AgentReconciler) constructEnvVars(agent *agenticv1alpha1.Agent, modelap
 		})
 	}
 
-	// Agentic loop configuration
-	if agent.Spec.Config != nil && agent.Spec.Config.AgenticLoop != nil {
-		loop := agent.Spec.Config.AgenticLoop
-		if loop.MaxSteps > 0 {
-			env = append(env, corev1.EnvVar{
-				Name:  "AGENTIC_LOOP_MAX_STEPS",
-				Value: fmt.Sprintf("%d", loop.MaxSteps),
-			})
-		}
-		if loop.EnableTools != nil {
-			env = append(env, corev1.EnvVar{
-				Name:  "AGENTIC_LOOP_ENABLE_TOOLS",
-				Value: fmt.Sprintf("%t", *loop.EnableTools),
-			})
-		}
-		if loop.EnableDelegation != nil {
-			env = append(env, corev1.EnvVar{
-				Name:  "AGENTIC_LOOP_ENABLE_DELEGATION",
-				Value: fmt.Sprintf("%t", *loop.EnableDelegation),
-			})
-		}
+	// Reasoning loop configuration
+	if agent.Spec.Config != nil && agent.Spec.Config.ReasoningLoopMaxSteps != nil {
+		env = append(env, corev1.EnvVar{
+			Name:  "AGENTIC_LOOP_MAX_STEPS",
+			Value: fmt.Sprintf("%d", *agent.Spec.Config.ReasoningLoopMaxSteps),
+		})
 	}
 
 	// MCP Servers configuration
