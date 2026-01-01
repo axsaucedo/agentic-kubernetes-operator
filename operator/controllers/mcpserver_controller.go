@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -171,6 +173,19 @@ func (r *MCPServerReconciler) constructDeployment(mcpserver *agenticv1alpha1.MCP
 		container = r.constructPythonContainer(mcpserver)
 	}
 
+	basePodSpec := corev1.PodSpec{
+		Containers: []corev1.Container{container},
+	}
+
+	// Apply podSpec override using strategic merge patch if provided
+	finalPodSpec := basePodSpec
+	if mcpserver.Spec.PodSpec != nil {
+		merged, err := r.mergePodSpec(basePodSpec, *mcpserver.Spec.PodSpec)
+		if err == nil {
+			finalPodSpec = merged
+		}
+	}
+
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("mcpserver-%s", mcpserver.Name),
@@ -186,14 +201,37 @@ func (r *MCPServerReconciler) constructDeployment(mcpserver *agenticv1alpha1.MCP
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,
 				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{container},
-				},
+				Spec: finalPodSpec,
 			},
 		},
 	}
 
 	return deployment
+}
+
+// mergePodSpec merges a patch PodSpec into a base PodSpec using strategic merge patch
+func (r *MCPServerReconciler) mergePodSpec(base, patch corev1.PodSpec) (corev1.PodSpec, error) {
+	baseJSON, err := json.Marshal(base)
+	if err != nil {
+		return base, err
+	}
+
+	patchJSON, err := json.Marshal(patch)
+	if err != nil {
+		return base, err
+	}
+
+	mergedJSON, err := strategicpatch.StrategicMergePatch(baseJSON, patchJSON, corev1.PodSpec{})
+	if err != nil {
+		return base, err
+	}
+
+	var merged corev1.PodSpec
+	if err := json.Unmarshal(mergedJSON, &merged); err != nil {
+		return base, err
+	}
+
+	return merged, nil
 }
 
 // constructPythonContainer creates a container that runs MCP server

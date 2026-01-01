@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -241,6 +243,23 @@ func (r *ModelAPIReconciler) constructDeployment(modelapi *agenticv1alpha1.Model
 		})
 	}
 
+	basePodSpec := corev1.PodSpec{
+		InitContainers: initContainers,
+		Containers: []corev1.Container{
+			r.constructContainer(modelapi),
+		},
+		Volumes: volumes,
+	}
+
+	// Apply podSpec override using strategic merge patch if provided
+	finalPodSpec := basePodSpec
+	if modelapi.Spec.PodSpec != nil {
+		merged, err := r.mergePodSpec(basePodSpec, *modelapi.Spec.PodSpec)
+		if err == nil {
+			finalPodSpec = merged
+		}
+	}
+
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("modelapi-%s", modelapi.Name),
@@ -256,18 +275,37 @@ func (r *ModelAPIReconciler) constructDeployment(modelapi *agenticv1alpha1.Model
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: labels,
 				},
-				Spec: corev1.PodSpec{
-					InitContainers: initContainers,
-					Containers: []corev1.Container{
-						r.constructContainer(modelapi),
-					},
-					Volumes: volumes,
-				},
+				Spec: finalPodSpec,
 			},
 		},
 	}
 
 	return deployment
+}
+
+// mergePodSpec merges a patch PodSpec into a base PodSpec using strategic merge patch
+func (r *ModelAPIReconciler) mergePodSpec(base, patch corev1.PodSpec) (corev1.PodSpec, error) {
+	baseJSON, err := json.Marshal(base)
+	if err != nil {
+		return base, err
+	}
+
+	patchJSON, err := json.Marshal(patch)
+	if err != nil {
+		return base, err
+	}
+
+	mergedJSON, err := strategicpatch.StrategicMergePatch(baseJSON, patchJSON, corev1.PodSpec{})
+	if err != nil {
+		return base, err
+	}
+
+	var merged corev1.PodSpec
+	if err := json.Unmarshal(mergedJSON, &merged); err != nil {
+		return base, err
+	}
+
+	return merged, nil
 }
 
 // constructContainer creates the container spec based on ModelAPI mode
