@@ -6,6 +6,7 @@ package integration
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -48,6 +49,11 @@ var _ = BeforeSuite(func() {
 		ErrorIfCRDPathMissing: true,
 	}
 
+	// Find envtest binaries
+	if binDir := getFirstFoundEnvTestBinaryDir(); binDir != "" {
+		testEnv.BinaryAssetsDirectory = binDir
+	}
+
 	var err error
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
@@ -60,13 +66,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
-	// Start controller manager
+	// Start controller manager with all controllers
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	// Register controllers
 	err = (&controllers.AgentReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
@@ -99,8 +104,23 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 })
 
-// Helper constants
+// Test helper constants
 const (
 	timeout  = time.Second * 30
 	interval = time.Millisecond * 250
 )
+
+// getFirstFoundEnvTestBinaryDir finds envtest binaries for IDE support
+func getFirstFoundEnvTestBinaryDir() string {
+	basePath := filepath.Join("..", "..", "bin", "k8s")
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			return filepath.Join(basePath, entry.Name())
+		}
+	}
+	return ""
+}
