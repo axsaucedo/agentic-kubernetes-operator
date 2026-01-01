@@ -297,7 +297,7 @@ def create_agent_resource(namespace: str, modelapi_name: str, mcpserver_names: l
         "instructions": "You are a helpful test assistant. You have access to an echo tool for testing.",
         "env": [
             {"name": "AGENT_LOG_LEVEL", "value": "INFO"},
-            {"name": "MODEL_NAME", "value": "smollm2:135m"},
+            {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
         ],
     }
     

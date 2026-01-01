@@ -76,10 +76,11 @@ async def test_modelapi_proxy_mock_response(test_namespace: str):
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # Test mock_response - LiteLLM returns this string without calling any backend
+            # Use the model name that was configured in the ModelAPI
             response = await client.post(
                 f"http://localhost:{port}/v1/chat/completions",
                 json={
-                    "model": "anything",
+                    "model": "gpt-3.5-turbo",  # Must match the model in the config
                     "messages": [{"role": "user", "content": "test"}],
                     "mock_response": "This is a deterministic mock response",
                 },

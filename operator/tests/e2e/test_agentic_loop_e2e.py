@@ -35,7 +35,7 @@ def create_agentic_loop_worker(namespace: str, modelapi_name: str, suffix: str =
                 "reasoningLoopMaxSteps": 3,
                 "env": [
                     {"name": "AGENT_LOG_LEVEL", "value": "DEBUG"},
-                    {"name": "MODEL_NAME", "value": "smollm2:135m"},
+                    {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
                 ],
             },
             "agentNetwork": {"access": []},
@@ -58,7 +58,7 @@ def create_agentic_loop_coordinator(namespace: str, modelapi_name: str, worker_n
                 "reasoningLoopMaxSteps": 5,
                 "env": [
                     {"name": "AGENT_LOG_LEVEL", "value": "DEBUG"},
-                    {"name": "MODEL_NAME", "value": "smollm2:135m"},
+                    {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
                 ],
             },
             "agentNetwork": {
