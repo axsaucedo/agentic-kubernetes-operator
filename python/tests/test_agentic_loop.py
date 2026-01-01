@@ -97,15 +97,11 @@ class TestAgenticLoopConfig:
         """Test default agentic loop configuration."""
         config = AgenticLoopConfig()
         assert config.max_steps == 5
-        assert config.enable_tools == True
-        assert config.enable_delegation == True
     
     def test_custom_config(self):
         """Test custom agentic loop configuration."""
-        config = AgenticLoopConfig(max_steps=3, enable_tools=False, enable_delegation=False)
+        config = AgenticLoopConfig(max_steps=3)
         assert config.max_steps == 3
-        assert config.enable_tools == False
-        assert config.enable_delegation == False
 
 
 class TestAgenticLoopToolCalling:
@@ -160,35 +156,6 @@ class TestAgenticLoopToolCalling:
         assert "agent_response" in event_types
         
         logger.info("✓ Tool call detection and execution works")
-    
-    @pytest.mark.asyncio
-    async def test_tool_call_disabled(self):
-        """Test that tool calls are ignored when enable_tools=False."""
-        tool_call_response = '''```tool_call
-{"tool": "calculator", "arguments": {}}
-```'''
-        
-        mock_model = MockModelAPI(responses=[tool_call_response])
-        mock_mcp = MockMCPClient(tools={"calculator": ("Add", {"sum": 0})})
-        
-        agent = Agent(
-            name="no-tools-agent",
-            model_api=mock_model,
-            mcp_clients=[mock_mcp],
-            loop_config=AgenticLoopConfig(enable_tools=False)
-        )
-        
-        result = []
-        async for chunk in agent.process_message("Calculate"):
-            result.append(chunk)
-        
-        # Tool should NOT be called
-        assert len(mock_mcp.call_log) == 0
-        
-        # Model should be called once (no loop)
-        assert mock_model.call_count == 1
-        
-        logger.info("✓ Tool calling disabled works")
 
 
 class TestAgenticLoopDelegation:
@@ -245,33 +212,6 @@ class TestAgenticLoopDelegation:
         assert "delegation_response" in event_types
         
         logger.info("✓ Delegation detection and execution works")
-    
-    @pytest.mark.asyncio
-    async def test_delegation_disabled(self):
-        """Test that delegations are ignored when enable_delegation=False."""
-        delegation_response = '''```delegate
-{"agent": "worker", "task": "Do something"}
-```'''
-        
-        mock_model = MockModelAPI(responses=[delegation_response])
-        mock_remote = RemoteAgent(name="worker", card_url="http://localhost:9999")
-        mock_remote.invoke = AsyncMock(return_value="Done")
-        
-        agent = Agent(
-            name="no-delegate-agent",
-            model_api=mock_model,
-            sub_agents=[mock_remote],
-            loop_config=AgenticLoopConfig(enable_delegation=False)
-        )
-        
-        result = []
-        async for chunk in agent.process_message("Delegate"):
-            result.append(chunk)
-        
-        # Delegation should NOT occur
-        mock_remote.invoke.assert_not_called()
-        
-        logger.info("✓ Delegation disabled works")
 
 
 class TestAgenticLoopMaxSteps:

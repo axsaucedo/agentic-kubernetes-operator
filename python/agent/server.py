@@ -48,8 +48,6 @@ class AgentServerSettings(BaseSettings):
     
     # Agentic loop configuration (from K8s operator)
     agentic_loop_max_steps: int = 5
-    agentic_loop_enable_tools: bool = True
-    agentic_loop_enable_delegation: bool = True
     
     # Debug settings (only enable in development/testing)
     agent_debug_memory_endpoints: bool = False
@@ -459,9 +457,7 @@ def create_agent_server(settings: AgentServerSettings = None, sub_agents: List[R
     # Create agentic loop config from settings
     from agent.client import AgenticLoopConfig
     loop_config = AgenticLoopConfig(
-        max_steps=settings.agentic_loop_max_steps,
-        enable_tools=settings.agentic_loop_enable_tools,
-        enable_delegation=settings.agentic_loop_enable_delegation
+        max_steps=settings.agentic_loop_max_steps
     )
 
     agent = Agent(

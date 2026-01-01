@@ -41,8 +41,6 @@ Wait for the agent's response before providing your final answer.
 class AgenticLoopConfig:
     """Configuration for the agentic reasoning loop."""
     max_steps: int = 5  # Maximum reasoning steps to prevent infinite loops
-    enable_tools: bool = True  # Whether to enable tool calling
-    enable_delegation: bool = True  # Whether to enable agent delegation
 
 
 @dataclass
@@ -162,15 +160,15 @@ class Agent:
         """Build enhanced system prompt with tools and agents info."""
         parts = [self.instructions]
         
-        # Add tools info if enabled and available
-        if self.loop_config.enable_tools and self.mcp_clients:
+        # Add tools info if available
+        if self.mcp_clients:
             tools_info = await self._get_tools_description()
             if tools_info:
                 parts.append("\n## Available Tools\n" + tools_info)
                 parts.append(TOOLS_INSTRUCTIONS)
         
-        # Add agents info if enabled and available
-        if self.loop_config.enable_delegation and self.sub_agents:
+        # Add agents info if available
+        if self.sub_agents:
             agents_info = await self._get_agents_description()
             if agents_info:
                 parts.append("\n## Available Agents for Delegation\n" + agents_info)
@@ -298,59 +296,57 @@ class Agent:
                     content = response["choices"][0]["message"]["content"]
                 
                 # Check for tool call
-                if self.loop_config.enable_tools:
-                    tool_call = self._parse_tool_call(content)
-                    if tool_call:
-                        # Log tool call
-                        tool_event = self.memory.create_event("tool_call", tool_call)
-                        await self.memory.add_event(session_id, tool_event)
+                tool_call = self._parse_tool_call(content)
+                if tool_call:
+                    # Log tool call
+                    tool_event = self.memory.create_event("tool_call", tool_call)
+                    await self.memory.add_event(session_id, tool_event)
+                    
+                    # Execute tool
+                    try:
+                        tool_name = tool_call.get("tool")
+                        tool_args = tool_call.get("arguments", {})
+                        tool_result = await self.execute_tool(tool_name, tool_args)
                         
-                        # Execute tool
-                        try:
-                            tool_name = tool_call.get("tool")
-                            tool_args = tool_call.get("arguments", {})
-                            tool_result = await self.execute_tool(tool_name, tool_args)
-                            
-                            # Log tool result
-                            result_event = self.memory.create_event("tool_result", {
-                                "tool": tool_name, "result": tool_result
-                            })
-                            await self.memory.add_event(session_id, result_event)
-                            
-                            # Add to conversation and continue loop
-                            messages.append({"role": "assistant", "content": content})
-                            messages.append({"role": "user", "content": f"Tool result: {json.dumps(tool_result)}"})
-                            continue
-                            
-                        except Exception as e:
-                            error_msg = f"Tool execution failed: {str(e)}"
-                            messages.append({"role": "assistant", "content": content})
-                            messages.append({"role": "user", "content": error_msg})
-                            continue
+                        # Log tool result
+                        result_event = self.memory.create_event("tool_result", {
+                            "tool": tool_name, "result": tool_result
+                        })
+                        await self.memory.add_event(session_id, result_event)
+                        
+                        # Add to conversation and continue loop
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": f"Tool result: {json.dumps(tool_result)}"})
+                        continue
+                        
+                    except Exception as e:
+                        error_msg = f"Tool execution failed: {str(e)}"
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": error_msg})
+                        continue
                 
                 # Check for delegation
-                if self.loop_config.enable_delegation:
-                    delegation = self._parse_delegation(content)
-                    if delegation:
-                        agent_name = delegation.get("agent")
-                        task = delegation.get("task")
+                delegation = self._parse_delegation(content)
+                if delegation:
+                    agent_name = delegation.get("agent")
+                    task = delegation.get("task")
+                    
+                    try:
+                        # Delegate to sub-agent (this logs events internally)
+                        delegation_result = await self.delegate_to_sub_agent(
+                            agent_name, task, session_id
+                        )
                         
-                        try:
-                            # Delegate to sub-agent (this logs events internally)
-                            delegation_result = await self.delegate_to_sub_agent(
-                                agent_name, task, session_id
-                            )
-                            
-                            # Add to conversation and continue loop
-                            messages.append({"role": "assistant", "content": content})
-                            messages.append({"role": "user", "content": f"Agent response: {delegation_result}"})
-                            continue
-                            
-                        except ValueError as e:
-                            error_msg = f"Delegation failed: {str(e)}"
-                            messages.append({"role": "assistant", "content": content})
-                            messages.append({"role": "user", "content": error_msg})
-                            continue
+                        # Add to conversation and continue loop
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": f"Agent response: {delegation_result}"})
+                        continue
+                        
+                    except ValueError as e:
+                        error_msg = f"Delegation failed: {str(e)}"
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": error_msg})
+                        continue
                 
                 # No tool call or delegation - this is the final response
                 response_event = self.memory.create_event("agent_response", content)
