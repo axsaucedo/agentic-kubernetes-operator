@@ -17,18 +17,31 @@ const (
 
 // +kubebuilder:object:generate=true
 
-// MCPServerConfig defines the configuration for MCP server
-type MCPServerConfig struct {
-	// MCP is the package name to run with uvx (e.g., "mcp-server-calculator")
+// MCPToolsConfig defines the tools configuration for MCP server
+type MCPToolsConfig struct {
+	// FromPackage is the package name to run with uvx (e.g., "mcp-server-calculator")
 	// For python-runtime type: runs as "uvx <package-name>"
 	// The package must be available on PyPI
 	// +kubebuilder:validation:Optional
-	MCP string `json:"mcp,omitempty"`
+	FromPackage string `json:"fromPackage,omitempty"`
 
-	// ToolsString is a Python literal string defining tools dynamically
+	// FromString is a Python literal string defining tools dynamically
 	// When set, the MCP server uses MCP_TOOLS_STRING env var instead of uvx package
 	// +kubebuilder:validation:Optional
-	ToolsString string `json:"toolsString,omitempty"`
+	FromString string `json:"fromString,omitempty"`
+
+	// FromSecretKeyRef is a reference to a Secret key containing tool definitions
+	// +kubebuilder:validation:Optional
+	FromSecretKeyRef *corev1.SecretKeySelector `json:"fromSecretKeyRef,omitempty"`
+}
+
+// +kubebuilder:object:generate=true
+
+// MCPServerConfig defines the configuration for MCP server
+type MCPServerConfig struct {
+	// Tools configures how MCP tools are loaded
+	// +kubebuilder:validation:Optional
+	Tools *MCPToolsConfig `json:"tools,omitempty"`
 
 	// Env variables to pass to the MCP server
 	// +kubebuilder:validation:Optional
@@ -46,9 +59,9 @@ type MCPServerSpec struct {
 	// Config contains the MCP server configuration
 	Config MCPServerConfig `json:"config"`
 
-	// Resources defines compute resources for the server
+	// PodSpec allows overriding the generated pod spec using strategic merge patch
 	// +kubebuilder:validation:Optional
-	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
+	PodSpec *corev1.PodSpec `json:"podSpec,omitempty"`
 }
 
 // +kubebuilder:object:generate=true

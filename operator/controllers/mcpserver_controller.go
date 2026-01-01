@@ -203,24 +203,36 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *agenticv1alpha
 	var image string
 	var command []string
 
-	// Check if using toolsString (dynamic tools via MCP_TOOLS_STRING)
-	if mcpserver.Spec.Config.ToolsString != "" {
-		// Use the agentic-agent image with MCP_TOOLS_STRING
-		image = "agentic-agent:latest"
-		command = []string{"python", "-m", "mcptools.server"}
-		env = append(env, corev1.EnvVar{
-			Name:  "MCP_TOOLS_STRING",
-			Value: mcpserver.Spec.Config.ToolsString,
-		})
-	} else {
-		// Use uvx with the package name
-		packageName := mcpserver.Spec.Config.MCP
-		moduleName := strings.ReplaceAll(packageName, "-", "_")
-		image = "python:3.12-slim"
-		command = []string{
-			"sh",
-			"-c",
-			fmt.Sprintf("pip install %s && ( %s || python -m %s )", packageName, packageName, moduleName),
+	// Check if using tools config
+	if mcpserver.Spec.Config.Tools != nil {
+		if mcpserver.Spec.Config.Tools.FromString != "" {
+			// Use the agentic-agent image with MCP_TOOLS_STRING
+			image = "agentic-agent:latest"
+			command = []string{"python", "-m", "mcptools.server"}
+			env = append(env, corev1.EnvVar{
+				Name:  "MCP_TOOLS_STRING",
+				Value: mcpserver.Spec.Config.Tools.FromString,
+			})
+		} else if mcpserver.Spec.Config.Tools.FromSecretKeyRef != nil {
+			// Use the agentic-agent image with MCP_TOOLS_STRING from secret
+			image = "agentic-agent:latest"
+			command = []string{"python", "-m", "mcptools.server"}
+			env = append(env, corev1.EnvVar{
+				Name: "MCP_TOOLS_STRING",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: mcpserver.Spec.Config.Tools.FromSecretKeyRef,
+				},
+			})
+		} else if mcpserver.Spec.Config.Tools.FromPackage != "" {
+			// Use uvx with the package name
+			packageName := mcpserver.Spec.Config.Tools.FromPackage
+			moduleName := strings.ReplaceAll(packageName, "-", "_")
+			image = "python:3.12-slim"
+			command = []string{
+				"sh",
+				"-c",
+				fmt.Sprintf("pip install %s && ( %s || python -m %s )", packageName, packageName, moduleName),
+			}
 		}
 	}
 
@@ -259,11 +271,6 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *agenticv1alpha
 			TimeoutSeconds:      3,
 			FailureThreshold:    2,
 		},
-	}
-
-	// Add resource requests if specified
-	if mcpserver.Spec.Resources != nil {
-		container.Resources = *mcpserver.Spec.Resources
 	}
 
 	return container
