@@ -5,7 +5,7 @@ How to run and write tests for the Agentic Kubernetes Operator.
 ## Test Structure
 
 ```
-python/tests/               # Python framework tests
+python/tests/               # Python framework tests (34 tests)
 ├── conftest.py             # Pytest fixtures
 ├── mock_model_server.py    # Mock LLM server for testing
 ├── test_agent.py           # Agent class tests
@@ -13,12 +13,29 @@ python/tests/               # Python framework tests
 ├── test_agentic_loop.py    # Agentic loop tests
 └── test_mcptools.py        # MCP server/client tests
 
-operator/tests/e2e/         # Kubernetes E2E tests
+operator/controllers/integration/  # Go integration tests (8 tests with envtest)
+├── suite_test.go               # Test suite setup with envtest
+└── controller_test.go          # Controller integration tests
+
+operator/tests/e2e/         # Kubernetes E2E tests (14 tests)
 ├── conftest.py             # K8s fixtures
 ├── test_agentic_loop_e2e.py    # Agentic loop E2E
 ├── test_base_func_e2e.py       # Basic functionality
 ├── test_modelapi_e2e.py        # ModelAPI tests
 └── test_multi_agent_e2e.py     # Multi-agent tests
+```
+
+## Running All Tests
+
+```bash
+# Python tests
+cd python && source .venv/bin/activate && python -m pytest tests/ -v
+
+# Go integration tests
+cd operator && make test
+
+# E2E tests (parallel by default)
+cd operator/tests && source .venv/bin/activate && make test
 ```
 
 ## Running Python Tests
@@ -49,6 +66,25 @@ python -m pytest tests/ --cov=. --cov-report=html
 | `test_agentic_loop.py` | Tool calling, delegation parsing, max steps |
 | `test_mcptools.py` | MCP server creation, tool registration, client |
 
+## Running Go Integration Tests
+
+The Go integration tests use `envtest` to run controllers against a real API server.
+
+```bash
+cd operator
+
+# Run all Go tests (installs envtest if needed)
+make test
+
+# Clean and rebuild
+make clean && make test
+```
+
+### What the tests verify:
+- **ModelAPI Controller**: Deployment, Service, ConfigMap creation for Proxy/Hosted modes
+- **MCPServer Controller**: Deployment with MCP_TOOLS_STRING env var, fromPackage handling
+- **Agent Controller**: Env vars (AGENT_NAME, PEER_AGENTS), podSpec merging, Service creation
+
 ## Running Kubernetes E2E Tests
 
 ### Prerequisites
@@ -70,8 +106,11 @@ kubectl get pods -n agentic-system
 ### Run Tests
 
 ```bash
-# Run all E2E tests
-python -m pytest e2e/ -v
+# Run all E2E tests in parallel (default, ~2 min)
+make test
+
+# Run sequentially (~6 min, better for debugging)
+make test-seq
 
 # Run specific test file
 python -m pytest e2e/test_base_func_e2e.py -v
