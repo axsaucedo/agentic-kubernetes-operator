@@ -32,6 +32,12 @@ deploy: manifests
 	kubectl apply -k config/rbac/
 	kubectl apply -k config/manager/
 
+undeploy: manifests
+	kubectl delete agents,mcpservers,modelapis --all-namespaces --all
+	kubectl delete -k config/crd/
+	kubectl delete -k config/rbac/
+	kubectl delete -k config/manager/
+
 # Generate CRD code
 generate:
 	$(CONTROLLER_GEN) object paths="./..."
