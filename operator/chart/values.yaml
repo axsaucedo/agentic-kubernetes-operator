@@ -52,3 +52,28 @@ defaultImages:
   mcpServer: agentic-mcp-server:latest
   litellm: ghcr.io/berriai/litellm:main-latest
   ollama: ollama/ollama:latest
+
+# Gateway API integration (optional)
+# When enabled, HTTPRoutes are created for Agent, ModelAPI, and MCPServer resources
+gatewayAPI:
+  # Enable Gateway API integration (default: false)
+  enabled: false
+  
+  # Reference an existing Gateway by name (required if enabled and createGateway is false)
+  gatewayName: ""
+  
+  # Namespace where the Gateway is located (defaults to operator namespace if empty)
+  gatewayNamespace: ""
+  
+  # Create a basic Gateway resource (requires gatewayClassName)
+  createGateway: false
+  
+  # GatewayClass name (required if createGateway is true)
+  # Common values: "istio", "nginx", "envoy-gateway", "traefik"
+  gatewayClassName: ""
+  
+  # Port for the Gateway listener (default: 80)
+  listenerPort: 80
+  
+  # Protocol for the Gateway listener (default: HTTP)
+  listenerProtocol: HTTP
