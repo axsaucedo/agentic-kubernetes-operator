@@ -16,8 +16,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	agenticv1alpha1 "agentic.example.com/agentic-operator/api/v1alpha1"
+	"agentic.example.com/agentic-operator/pkg/gateway"
 	"agentic.example.com/agentic-operator/pkg/util"
 )
 
@@ -173,6 +175,18 @@ func (r *ModelAPIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		port = 11434
 	}
 	modelapi.Status.Endpoint = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, modelapi.Namespace, port)
+
+	// Create HTTPRoute if Gateway API is enabled
+	if err := gateway.ReconcileHTTPRoute(ctx, r.Client, r.Scheme, modelapi, gateway.HTTPRouteParams{
+		ResourceType: gateway.ResourceTypeModelAPI,
+		ResourceName: modelapi.Name,
+		Namespace:    modelapi.Namespace,
+		ServiceName:  serviceName,
+		ServicePort:  int32(port),
+		Labels:       map[string]string{"app": "modelapi", "modelapi": modelapi.Name},
+	}, log); err != nil {
+		log.Error(err, "failed to reconcile HTTPRoute")
+	}
 
 	// Check deployment readiness
 	if deployment.Status.ReadyReplicas > 0 {
@@ -490,10 +504,15 @@ litellm_settings:
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModelAPIReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&agenticv1alpha1.ModelAPI{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
-		Owns(&corev1.ConfigMap{}).
-		Complete(r)
+		Owns(&corev1.ConfigMap{})
+
+	if gateway.GetConfig().Enabled {
+		builder = builder.Owns(&gatewayv1.HTTPRoute{})
+	}
+
+	return builder.Complete(r)
 }

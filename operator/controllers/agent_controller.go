@@ -18,8 +18,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	agenticv1alpha1 "agentic.example.com/agentic-operator/api/v1alpha1"
+	"agentic.example.com/agentic-operator/pkg/gateway"
 	"agentic.example.com/agentic-operator/pkg/util"
 )
 
@@ -214,6 +216,18 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 		// Set endpoint for A2A (base URL only - clients append paths like /.well-known/agent)
 		agent.Status.Endpoint = fmt.Sprintf("http://%s.%s.svc.cluster.local:8000", serviceName, agent.Namespace)
+
+		// Create HTTPRoute if Gateway API is enabled
+		if err := gateway.ReconcileHTTPRoute(ctx, r.Client, r.Scheme, agent, gateway.HTTPRouteParams{
+			ResourceType: gateway.ResourceTypeAgent,
+			ResourceName: agent.Name,
+			Namespace:    agent.Namespace,
+			ServiceName:  serviceName,
+			ServicePort:  8000,
+			Labels:       map[string]string{"app": "agent", "agent": agent.Name},
+		}, log); err != nil {
+			log.Error(err, "failed to reconcile HTTPRoute")
+		}
 	}
 
 	// Update status
@@ -539,11 +553,17 @@ func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return requests
 	})
 
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&agenticv1alpha1.Agent{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Watches(&agenticv1alpha1.ModelAPI{}, mapModelAPIToAgents).
-		Watches(&agenticv1alpha1.MCPServer{}, mapMCPServerToAgents).
-		Complete(r)
+		Watches(&agenticv1alpha1.MCPServer{}, mapMCPServerToAgents)
+
+	// Own HTTPRoutes if Gateway API is enabled
+	if gateway.GetConfig().Enabled {
+		builder = builder.Owns(&gatewayv1.HTTPRoute{})
+	}
+
+	return builder.Complete(r)
 }

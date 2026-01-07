@@ -17,8 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	agenticv1alpha1 "agentic.example.com/agentic-operator/api/v1alpha1"
+	"agentic.example.com/agentic-operator/pkg/gateway"
 	"agentic.example.com/agentic-operator/pkg/util"
 )
 
@@ -134,6 +136,18 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update status
 	mcpserver.Status.Endpoint = fmt.Sprintf("http://%s.%s.svc.cluster.local:8000", serviceName, mcpserver.Namespace)
+
+	// Create HTTPRoute if Gateway API is enabled
+	if err := gateway.ReconcileHTTPRoute(ctx, r.Client, r.Scheme, mcpserver, gateway.HTTPRouteParams{
+		ResourceType: gateway.ResourceTypeMCP,
+		ResourceName: mcpserver.Name,
+		Namespace:    mcpserver.Namespace,
+		ServiceName:  serviceName,
+		ServicePort:  8000,
+		Labels:       map[string]string{"app": "mcpserver", "mcpserver": mcpserver.Name},
+	}, log); err != nil {
+		log.Error(err, "failed to reconcile HTTPRoute")
+	}
 
 	// Check deployment readiness
 	if deployment.Status.ReadyReplicas > 0 {
@@ -320,9 +334,14 @@ func (r *MCPServerReconciler) constructService(mcpserver *agenticv1alpha1.MCPSer
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&agenticv1alpha1.MCPServer{}).
 		Owns(&appsv1.Deployment{}).
-		Owns(&corev1.Service{}).
-		Complete(r)
+		Owns(&corev1.Service{})
+
+	if gateway.GetConfig().Enabled {
+		builder = builder.Owns(&gatewayv1.HTTPRoute{})
+	}
+
+	return builder.Complete(r)
 }
