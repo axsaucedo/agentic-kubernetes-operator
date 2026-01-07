@@ -51,21 +51,30 @@ python -m pytest tests/ -v  # Run all 36 tests
 ```
 
 ### Kubernetes E2E Tests
+
+E2E tests use Gateway API for routing and Helm for operator installation.
+
 ```bash
-# Start operator locally (required)
-cd operator && ./bin/manager &
+# Prerequisites: Gateway API CRDs and controller installed
+# kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/experimental-install.yaml
+# helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm --namespace envoy-gateway-system --create-namespace
 
 # Run E2E tests (parallel by default - uses all CPUs)
 cd operator/tests
 source .venv/bin/activate
-make test              # Parallel execution (~2 min, 13 tests)
-make test-seq          # Sequential execution (~6 min)
+make test              # Parallel execution (~3 min, 14 tests)
+make test-seq          # Sequential execution (~7 min)
+make clean             # Clean up test resources
 ```
+
+**Note**: Tests auto-install operator via Helm with Gateway API enabled. No manual operator start needed.
 
 ## Dependencies
 - Ollama running locally with `smollm2:135m` model
 - Docker Desktop with Kubernetes enabled
 - `docker-desktop` kubectl context
+- Gateway API CRDs installed
+- Envoy Gateway (or other Gateway controller) installed
 
 ---
 
