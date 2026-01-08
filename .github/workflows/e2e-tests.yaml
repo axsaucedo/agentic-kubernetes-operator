@@ -62,9 +62,12 @@ jobs:
           docker tag ghcr.io/berriai/litellm:main-latest ${LOCAL_REGISTRY}/litellm:latest
           docker push ${LOCAL_REGISTRY}/litellm:latest
           
-          docker pull ollama/ollama:latest
-          docker tag ollama/ollama:latest ${LOCAL_REGISTRY}/ollama:latest
+          docker pull alpine/ollama:latest
+          docker tag alpine/ollama:latest ${LOCAL_REGISTRY}/ollama:latest
           docker push ${LOCAL_REGISTRY}/ollama:latest
+
+      - name: Install MetalLB for LoadBalancer support
+        run: ./hack/install-metallb.sh
 
       - name: Create Helm values for KIND registry
         env:

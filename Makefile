@@ -71,6 +71,7 @@ setup-dev:
 kind-create:
 	@./hack/kind-with-registry.sh
 	@./hack/install-gateway.sh
+	@./hack/install-metallb.sh
 
 kind-delete:
 	@./hack/kind-delete.sh
