@@ -73,24 +73,7 @@ kind-create:
 	@./hack/install-gateway.sh
 
 kind-delete:
-	@echo "Deleting KIND cluster..."
-	-kind delete cluster --name $(KIND_CLUSTER_NAME)
-	-docker rm -f $(REGISTRY_NAME)
+	@./hack/kind-delete.sh
 
 kind-e2e: kind-create
-	@echo "Building and pushing images to KIND registry..."
-	cd operator && docker build -t $(LOCAL_REGISTRY)/agentic-operator:latest . && docker push $(LOCAL_REGISTRY)/agentic-operator:latest
-	cd python && docker build -t $(LOCAL_REGISTRY)/agentic-agent:latest . && docker push $(LOCAL_REGISTRY)/agentic-agent:latest
-	cd python && docker build -t $(LOCAL_REGISTRY)/agentic-mcp-server:latest . && docker push $(LOCAL_REGISTRY)/agentic-mcp-server:latest
-	@echo "Creating Helm values for KIND registry..."
-	@echo "controllerManager:" > /tmp/kind-e2e-values.yaml
-	@echo "  manager:" >> /tmp/kind-e2e-values.yaml
-	@echo "    image:" >> /tmp/kind-e2e-values.yaml
-	@echo "      repository: $(LOCAL_REGISTRY)/agentic-operator" >> /tmp/kind-e2e-values.yaml
-	@echo "      tag: latest" >> /tmp/kind-e2e-values.yaml
-	@echo "    imagePullPolicy: Always" >> /tmp/kind-e2e-values.yaml
-	@echo "defaultImages:" >> /tmp/kind-e2e-values.yaml
-	@echo "  agentRuntime: $(LOCAL_REGISTRY)/agentic-agent:latest" >> /tmp/kind-e2e-values.yaml
-	@echo "  mcpServer: $(LOCAL_REGISTRY)/agentic-mcp-server:latest" >> /tmp/kind-e2e-values.yaml
-	@echo "Running E2E tests..."
-	cd operator/tests && HELM_VALUES_FILE=/tmp/kind-e2e-values.yaml make test
+	@./hack/run-e2e-tests.sh

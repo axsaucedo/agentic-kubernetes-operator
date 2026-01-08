@@ -49,12 +49,22 @@ jobs:
         env:
           LOCAL_REGISTRY: localhost:${{ env.REGISTRY_PORT }}
         run: |
+          # Build project images
           docker build -t ${LOCAL_REGISTRY}/agentic-operator:latest operator/
           docker build -t ${LOCAL_REGISTRY}/agentic-agent:latest python/
-          docker build -t ${LOCAL_REGISTRY}/agentic-mcp-server:latest python/
+          docker tag ${LOCAL_REGISTRY}/agentic-agent:latest ${LOCAL_REGISTRY}/agentic-mcp-server:latest
           docker push ${LOCAL_REGISTRY}/agentic-operator:latest
           docker push ${LOCAL_REGISTRY}/agentic-agent:latest
           docker push ${LOCAL_REGISTRY}/agentic-mcp-server:latest
+          
+          # Pull and push external images to local registry
+          docker pull ghcr.io/berriai/litellm:main-latest
+          docker tag ghcr.io/berriai/litellm:main-latest ${LOCAL_REGISTRY}/litellm:latest
+          docker push ${LOCAL_REGISTRY}/litellm:latest
+          
+          docker pull ollama/ollama:latest
+          docker tag ollama/ollama:latest ${LOCAL_REGISTRY}/ollama:latest
+          docker push ${LOCAL_REGISTRY}/ollama:latest
 
       - name: Create Helm values for KIND registry
         env:
@@ -70,6 +80,8 @@ jobs:
           defaultImages:
             agentRuntime: ${LOCAL_REGISTRY}/agentic-agent:latest
             mcpServer: ${LOCAL_REGISTRY}/agentic-mcp-server:latest
+            litellm: ${LOCAL_REGISTRY}/litellm:latest
+            ollama: ${LOCAL_REGISTRY}/ollama:latest
           EOF
           sed -i 's/^          //' /tmp/e2e-values.yaml
 
