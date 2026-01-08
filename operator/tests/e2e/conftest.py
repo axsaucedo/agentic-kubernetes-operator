@@ -16,8 +16,8 @@ from sh import kubectl, helm, ErrorReturnCode
 import yaml
 
 
-# Gateway configuration
-GATEWAY_URL = "http://localhost:80"
+# Gateway configuration - can be overridden via environment variable for KIND clusters
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:80")
 CHART_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../chart"))
 RELEASE_NAME = "agentic-e2e"
 OPERATOR_NAMESPACE = "agentic-e2e-system"
