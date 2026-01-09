@@ -10,50 +10,39 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REG_PORT="${REGISTRY_PORT:-5001}"
 LOCAL_REGISTRY="localhost:${REG_PORT}"
 
+# Image versions (pinned for reproducibility)
+OPERATOR_TAG="dev"
+AGENT_TAG="dev"
+LITELLM_VERSION="v1.56.5"
+# alpine/ollama only has 'latest' tag - using it for simplicity
+OLLAMA_TAG="latest"
+
 echo "=== Building and pushing images to local registry ==="
 
 # Build and push operator
 echo "Building operator image..."
-docker build -t "${LOCAL_REGISTRY}/agentic-operator:latest" "${PROJECT_ROOT}/operator/"
-docker push "${LOCAL_REGISTRY}/agentic-operator:latest"
+docker build -t "${LOCAL_REGISTRY}/agentic-operator:${OPERATOR_TAG}" "${PROJECT_ROOT}/operator/"
+docker push "${LOCAL_REGISTRY}/agentic-operator:${OPERATOR_TAG}"
 
 # Build and push agent runtime
 echo "Building agent runtime image..."
-docker build -t "${LOCAL_REGISTRY}/agentic-agent:latest" "${PROJECT_ROOT}/python/"
-docker push "${LOCAL_REGISTRY}/agentic-agent:latest"
+docker build -t "${LOCAL_REGISTRY}/agentic-agent:${AGENT_TAG}" "${PROJECT_ROOT}/python/"
+docker push "${LOCAL_REGISTRY}/agentic-agent:${AGENT_TAG}"
 
 # Tag same image for MCP server (they use the same base)
-docker tag "${LOCAL_REGISTRY}/agentic-agent:latest" "${LOCAL_REGISTRY}/agentic-mcp-server:latest"
-docker push "${LOCAL_REGISTRY}/agentic-mcp-server:latest"
+docker tag "${LOCAL_REGISTRY}/agentic-agent:${AGENT_TAG}" "${LOCAL_REGISTRY}/agentic-mcp-server:${AGENT_TAG}"
+docker push "${LOCAL_REGISTRY}/agentic-mcp-server:${AGENT_TAG}"
 
-# Pull and push external images to local registry
-echo "Pulling and pushing LiteLLM image..."
-docker pull ghcr.io/berriai/litellm:main-latest
-docker tag ghcr.io/berriai/litellm:main-latest "${LOCAL_REGISTRY}/litellm:latest"
-docker push "${LOCAL_REGISTRY}/litellm:latest"
+# Build minimal LiteLLM image from our Dockerfile
+echo "Building minimal LiteLLM image..."
+docker build -t "${LOCAL_REGISTRY}/litellm:${LITELLM_VERSION}" -f "${SCRIPT_DIR}/Dockerfile.litellm" "${SCRIPT_DIR}"
+docker push "${LOCAL_REGISTRY}/litellm:${LITELLM_VERSION}"
 
+# Pull and push Ollama image (using alpine/ollama for smaller size)
 echo "Pulling and pushing Ollama image..."
-docker pull alpine/ollama:latest
-docker tag alpine/ollama:latest "${LOCAL_REGISTRY}/ollama:latest"
-docker push "${LOCAL_REGISTRY}/ollama:latest"
-
-echo "=== Creating Helm values for KIND registry ==="
-cat > /tmp/kind-e2e-values.yaml << EOF
-controllerManager:
-  manager:
-    image:
-      repository: ${LOCAL_REGISTRY}/agentic-operator
-      tag: latest
-    imagePullPolicy: Always
-defaultImages:
-  agentRuntime: ${LOCAL_REGISTRY}/agentic-agent:latest
-  mcpServer: ${LOCAL_REGISTRY}/agentic-mcp-server:latest
-  litellm: ${LOCAL_REGISTRY}/litellm:latest
-  ollama: ${LOCAL_REGISTRY}/ollama:latest
-EOF
-
-echo "Helm values file:"
-cat /tmp/kind-e2e-values.yaml
+docker pull "alpine/ollama:${OLLAMA_TAG}"
+docker tag "alpine/ollama:${OLLAMA_TAG}" "${LOCAL_REGISTRY}/ollama:${OLLAMA_TAG}"
+docker push "${LOCAL_REGISTRY}/ollama:${OLLAMA_TAG}"
 
 echo ""
 echo "=== Running E2E tests ==="
@@ -69,13 +58,17 @@ else
     source .venv/bin/activate
 fi
 
+# Use the checked-in values file
+HELM_VALUES_FILE="${SCRIPT_DIR}/kind-e2e-values.yaml"
+echo "Using Helm values: ${HELM_VALUES_FILE}"
+
 # Pre-install operator with Gateway
 echo "Pre-installing operator to get Gateway..."
 kubectl create namespace agentic-e2e-system 2>/dev/null || true
 kubectl apply --server-side -f "${PROJECT_ROOT}/operator/config/crd/bases"
 helm upgrade --install agentic-e2e "${PROJECT_ROOT}/operator/chart" \
     --namespace agentic-e2e-system \
-    -f /tmp/kind-e2e-values.yaml \
+    -f "${HELM_VALUES_FILE}" \
     --set gatewayAPI.enabled=true \
     --set gatewayAPI.createGateway=true \
     --set gatewayAPI.gatewayClassName=envoy-gateway \
@@ -122,9 +115,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Run tests with Gateway URL set to localhost port-forward
-# Note: We don't call 'make test' because it runs 'make clean' which deletes the Gateway
-export HELM_VALUES_FILE=/tmp/kind-e2e-values.yaml
+# Run tests with Gateway URL and Helm values
+export HELM_VALUES_FILE="${HELM_VALUES_FILE}"
 export GATEWAY_URL="http://localhost:8888"
 echo "Using Gateway URL: ${GATEWAY_URL}"
 
@@ -133,6 +125,5 @@ echo "Cleaning up leftover test namespaces..."
 kubectl get ns -o name | grep -E "e2e-gw[0-9]+" | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true
 sleep 2
 
-# Run pytest directly (skip 'make test' which would clean the operator)
-NPROC=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-python -m pytest e2e/ -v -n ${NPROC} --dist loadscope
+# Run tests using make test (clean target has been removed from test dependency)
+make test

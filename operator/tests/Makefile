@@ -3,10 +3,10 @@ NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 .PHONY: test test-seq install clean
 
-test: clean
+test:
 	python -m pytest e2e/ -v -n $(NPROC) --dist loadscope
 
-test-seq: clean
+test-seq:
 	python -m pytest e2e/ -v
 
 install:
