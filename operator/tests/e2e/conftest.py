@@ -65,11 +65,18 @@ def wait_for_deployment(namespace: str, name: str, timeout: int = 300):
             "--timeout", f"{remaining_timeout}s")
 
 
-def wait_for_resource_ready(url: str, max_wait: int = 30) -> bool:
-    """Wait for a resource to be accessible via Gateway."""
+def wait_for_resource_ready(url: str, max_wait: int = 30, health_path: str = "/health") -> bool:
+    """Wait for a resource to be accessible via Gateway.
+    
+    Args:
+        url: Base URL of the resource
+        max_wait: Maximum seconds to wait
+        health_path: Health endpoint path (default: /health)
+            For LiteLLM ModelAPI, use /health/liveliness for faster response
+    """
     for _ in range(max_wait * 4):
         try:
-            response = httpx.get(f"{url}/health", timeout=2.0)
+            response = httpx.get(f"{url}{health_path}", timeout=2.0)
             if response.status_code == 200:
                 return True
         except Exception:
@@ -164,7 +171,14 @@ def _uninstall_operator():
     Note: With xdist parallel execution, we don't uninstall automatically
     since other workers may still need the operator. Manual cleanup via
     'make clean' is recommended after test runs.
+    
+    Set SKIP_OPERATOR_UNINSTALL=1 to preserve operator between test runs
+    (useful for KIND clusters with port-forward).
     """
+    # Skip uninstall if explicitly disabled (e.g., for KIND with port-forward)
+    if os.environ.get("SKIP_OPERATOR_UNINSTALL"):
+        return
+    
     # Only uninstall if running without xdist (single worker)
     if os.environ.get("PYTEST_XDIST_WORKER"):
         return  # Skip cleanup in parallel mode
