@@ -34,11 +34,11 @@ async def test_modelapi_proxy_deployment(test_namespace: str):
     wait_for_deployment(test_namespace, f"modelapi-{name}", timeout=120)
 
     modelapi_url = gateway_url(test_namespace, "modelapi", name)
-    wait_for_resource_ready(modelapi_url)
+    wait_for_resource_ready(modelapi_url, health_path="/health/liveliness")
 
     async with httpx.AsyncClient() as client:
         # Health check
-        response = await client.get(f"{modelapi_url}/health", timeout=10.0)
+        response = await client.get(f"{modelapi_url}/health/liveliness", timeout=10.0)
         assert response.status_code == 200
         
         # Models endpoint
@@ -56,7 +56,7 @@ async def test_modelapi_proxy_mock_response(test_namespace: str):
     wait_for_deployment(test_namespace, f"modelapi-{name}", timeout=120)
 
     modelapi_url = gateway_url(test_namespace, "modelapi", name)
-    wait_for_resource_ready(modelapi_url)
+    wait_for_resource_ready(modelapi_url, health_path="/health/liveliness")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Test mock_response
@@ -99,11 +99,11 @@ async def test_modelapi_proxy_with_ollama(test_namespace: str):
     wait_for_deployment(test_namespace, f"modelapi-{name}", timeout=120)
 
     modelapi_url = gateway_url(test_namespace, "modelapi", name)
-    wait_for_resource_ready(modelapi_url)
+    wait_for_resource_ready(modelapi_url, health_path="/health/liveliness")
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         # Test health
-        response = await client.get(f"{modelapi_url}/health", timeout=10.0)
+        response = await client.get(f"{modelapi_url}/health/liveliness", timeout=10.0)
         assert response.status_code == 200
         
         # Test actual model inference
