@@ -116,14 +116,16 @@ cleanup() {
 trap cleanup EXIT
 
 # Run tests with Gateway URL and Helm values
+# Set SKIP_OPERATOR_UNINSTALL to preserve Gateway between test runs (for port-forward)
 export HELM_VALUES_FILE="${HELM_VALUES_FILE}"
 export GATEWAY_URL="http://localhost:8888"
+export SKIP_OPERATOR_UNINSTALL=1
 echo "Using Gateway URL: ${GATEWAY_URL}"
 
 # Clean up any leftover test namespaces (but not the operator namespace with Gateway!)
 echo "Cleaning up leftover test namespaces..."
-kubectl get ns -o name | grep -E "e2e-gw[0-9]+" | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true
+kubectl get ns -o name | grep -E "e2e-(gw[0-9]+|main)" | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true
 sleep 2
 
-# Run tests using make test (clean target has been removed from test dependency)
+# Run tests using make test
 make test
