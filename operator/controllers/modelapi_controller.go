@@ -316,7 +316,9 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *agenticv1alpha1.ModelA
 			image = "ghcr.io/berriai/litellm:main-latest"
 		}
 		port = 8000
-		healthPath = "/health"
+		// Use /health/liveliness for faster probe responses
+		// /health does a full backend check which can timeout
+		healthPath = "/health/liveliness"
 
 		// Always use config file mode for consistency:
 		// - User provides configYaml → use their config directly
