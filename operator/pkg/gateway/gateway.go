@@ -65,6 +65,23 @@ type HTTPRouteParams struct {
 	ServiceName  string
 	ServicePort  int32
 	Labels       map[string]string
+	// Timeout is the request timeout for the HTTPRoute (Gateway API Duration format, e.g., "30s", "1m")
+	// If empty, a default timeout is applied based on resource type.
+	Timeout string
+}
+
+// DefaultTimeout returns the default timeout for a resource type
+func DefaultTimeout(resourceType ResourceType) string {
+	switch resourceType {
+	case ResourceTypeModelAPI:
+		return "120s" // LLM inference can take time
+	case ResourceTypeAgent:
+		return "120s" // Agents may do multi-step reasoning
+	case ResourceTypeMCP:
+		return "30s" // Tool calls are typically fast
+	default:
+		return "30s"
+	}
 }
 
 // constructHTTPRoute creates an HTTPRoute for a resource (internal helper)
@@ -76,6 +93,53 @@ func constructHTTPRoute(params HTTPRouteParams, config Config) *gatewayv1.HTTPRo
 
 	// URL rewrite to strip the path prefix
 	rewritePath := "/"
+
+	// Determine timeout - use provided value or default
+	timeout := params.Timeout
+	if timeout == "" {
+		timeout = DefaultTimeout(params.ResourceType)
+	}
+
+	// Build the HTTPRoute rule
+	rule := gatewayv1.HTTPRouteRule{
+		Matches: []gatewayv1.HTTPRouteMatch{
+			{
+				Path: &gatewayv1.HTTPPathMatch{
+					Type:  &pathPrefix,
+					Value: &pathValue,
+				},
+			},
+		},
+		Filters: []gatewayv1.HTTPRouteFilter{
+			{
+				Type: gatewayv1.HTTPRouteFilterURLRewrite,
+				URLRewrite: &gatewayv1.HTTPURLRewriteFilter{
+					Path: &gatewayv1.HTTPPathModifier{
+						Type:               gatewayv1.PrefixMatchHTTPPathModifier,
+						ReplacePrefixMatch: &rewritePath,
+					},
+				},
+			},
+		},
+		BackendRefs: []gatewayv1.HTTPBackendRef{
+			{
+				BackendRef: gatewayv1.BackendRef{
+					BackendObjectReference: gatewayv1.BackendObjectReference{
+						Name: gatewayv1.ObjectName(params.ServiceName),
+						Port: &port,
+					},
+				},
+			},
+		},
+	}
+
+	// Add timeout if not "0s" (which means use gateway default)
+	if timeout != "0s" && timeout != "" {
+		requestTimeout := gatewayv1.Duration(timeout)
+		rule.Timeouts = &gatewayv1.HTTPRouteTimeouts{
+			Request: &requestTimeout,
+		}
+	}
 
 	return &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
@@ -92,39 +156,7 @@ func constructHTTPRoute(params HTTPRouteParams, config Config) *gatewayv1.HTTPRo
 					},
 				},
 			},
-			Rules: []gatewayv1.HTTPRouteRule{
-				{
-					Matches: []gatewayv1.HTTPRouteMatch{
-						{
-							Path: &gatewayv1.HTTPPathMatch{
-								Type:  &pathPrefix,
-								Value: &pathValue,
-							},
-						},
-					},
-					Filters: []gatewayv1.HTTPRouteFilter{
-						{
-							Type: gatewayv1.HTTPRouteFilterURLRewrite,
-							URLRewrite: &gatewayv1.HTTPURLRewriteFilter{
-								Path: &gatewayv1.HTTPPathModifier{
-									Type:            gatewayv1.PrefixMatchHTTPPathModifier,
-									ReplacePrefixMatch: &rewritePath,
-								},
-							},
-						},
-					},
-					BackendRefs: []gatewayv1.HTTPBackendRef{
-						{
-							BackendRef: gatewayv1.BackendRef{
-								BackendObjectReference: gatewayv1.BackendObjectReference{
-									Name: gatewayv1.ObjectName(params.ServiceName),
-									Port: &port,
-								},
-							},
-						},
-					},
-				},
-			},
+			Rules: []gatewayv1.HTTPRouteRule{rule},
 		},
 	}
 }
