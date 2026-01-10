@@ -1,17 +1,16 @@
 #!/bin/bash
-# Build images for KIND E2E tests.
+# Build images and load into KIND cluster for E2E tests.
 # This script is used by both run-e2e-tests.sh and GitHub Actions.
 #
 # Required environment variables:
-#   REGISTRY - Docker registry URL (e.g., localhost:5001)
+#   REGISTRY - Image prefix (e.g., kind-local)
+#   KIND_CLUSTER_NAME - KIND cluster name (default: agentic-e2e)
 #
 # Optional environment variables (with defaults):
 #   OPERATOR_TAG - Tag for operator image (default: dev)
 #   AGENT_TAG - Tag for agent image (default: dev)
 #   LITELLM_VERSION - LiteLLM version (default: v1.56.5)
 #   OLLAMA_TAG - Ollama tag (default: latest)
-#   KIND_CLUSTER_NAME - KIND cluster name for loading images (default: agentic-e2e)
-#   USE_KIND_LOAD - If set to "true", use kind load instead of registry push
 set -o errexit
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,12 +22,11 @@ if [ -z "${REGISTRY}" ]; then
 fi
 
 # Set defaults
+KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-agentic-e2e}"
 OPERATOR_TAG="${OPERATOR_TAG:-dev}"
 AGENT_TAG="${AGENT_TAG:-dev}"
 LITELLM_VERSION="${LITELLM_VERSION:-v1.56.5}"
 OLLAMA_TAG="${OLLAMA_TAG:-latest}"
-KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-agentic-e2e}"
-USE_KIND_LOAD="${USE_KIND_LOAD:-false}"
 
 # Find project root (works from hack/ or project root)
 if [ -d "${SCRIPT_DIR}/../operator" ]; then
@@ -42,11 +40,11 @@ fi
 
 echo "Building images..."
 echo "  REGISTRY: ${REGISTRY}"
+echo "  KIND_CLUSTER_NAME: ${KIND_CLUSTER_NAME}"
 echo "  OPERATOR_TAG: ${OPERATOR_TAG}"
 echo "  AGENT_TAG: ${AGENT_TAG}"
 echo "  LITELLM_VERSION: ${LITELLM_VERSION}"
 echo "  OLLAMA_TAG: ${OLLAMA_TAG}"
-echo "  USE_KIND_LOAD: ${USE_KIND_LOAD}"
 echo ""
 
 # Build operator
@@ -69,24 +67,14 @@ echo "Pulling and tagging Ollama image..."
 docker pull "alpine/ollama:${OLLAMA_TAG}"
 docker tag "alpine/ollama:${OLLAMA_TAG}" "${REGISTRY}/ollama:${OLLAMA_TAG}"
 
-# Either push to registry or load directly into KIND
-if [ "${USE_KIND_LOAD}" = "true" ]; then
-    echo ""
-    echo "Loading images into KIND cluster '${KIND_CLUSTER_NAME}'..."
-    kind load docker-image "${REGISTRY}/agentic-operator:${OPERATOR_TAG}" --name "${KIND_CLUSTER_NAME}"
-    kind load docker-image "${REGISTRY}/agentic-agent:${AGENT_TAG}" --name "${KIND_CLUSTER_NAME}"
-    kind load docker-image "${REGISTRY}/agentic-mcp-server:${AGENT_TAG}" --name "${KIND_CLUSTER_NAME}"
-    kind load docker-image "${REGISTRY}/litellm:${LITELLM_VERSION}" --name "${KIND_CLUSTER_NAME}"
-    kind load docker-image "${REGISTRY}/ollama:${OLLAMA_TAG}" --name "${KIND_CLUSTER_NAME}"
-else
-    echo ""
-    echo "Pushing images to registry..."
-    docker push "${REGISTRY}/agentic-operator:${OPERATOR_TAG}"
-    docker push "${REGISTRY}/agentic-agent:${AGENT_TAG}"
-    docker push "${REGISTRY}/agentic-mcp-server:${AGENT_TAG}"
-    docker push "${REGISTRY}/litellm:${LITELLM_VERSION}"
-    docker push "${REGISTRY}/ollama:${OLLAMA_TAG}"
-fi
+# Load images into KIND cluster
+echo ""
+echo "Loading images into KIND cluster '${KIND_CLUSTER_NAME}'..."
+kind load docker-image "${REGISTRY}/agentic-operator:${OPERATOR_TAG}" --name "${KIND_CLUSTER_NAME}"
+kind load docker-image "${REGISTRY}/agentic-agent:${AGENT_TAG}" --name "${KIND_CLUSTER_NAME}"
+kind load docker-image "${REGISTRY}/agentic-mcp-server:${AGENT_TAG}" --name "${KIND_CLUSTER_NAME}"
+kind load docker-image "${REGISTRY}/litellm:${LITELLM_VERSION}" --name "${KIND_CLUSTER_NAME}"
+kind load docker-image "${REGISTRY}/ollama:${OLLAMA_TAG}" --name "${KIND_CLUSTER_NAME}"
 
 echo ""
-echo "All images built successfully!"
+echo "All images built and loaded into KIND!"
