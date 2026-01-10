@@ -1,51 +1,56 @@
 #!/bin/bash
 # Runs E2E tests in KIND cluster with local registry.
 # This script builds all images, pushes them to the local registry, and runs tests.
+#
+# The operator is installed once at the start and uninstalled at the end.
+# Port-forward is maintained throughout the test run.
 set -o errexit
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Configuration
-REG_PORT="${REGISTRY_PORT:-5001}"
-LOCAL_REGISTRY="localhost:${REG_PORT}"
+# Configuration - single source of truth for versions
+export REG_PORT="${REGISTRY_PORT:-5001}"
+export REGISTRY="localhost:${REG_PORT}"
+export OPERATOR_TAG="${OPERATOR_TAG:-dev}"
+export AGENT_TAG="${AGENT_TAG:-dev}"
+export LITELLM_VERSION="${LITELLM_VERSION:-v1.56.5}"
+export OLLAMA_TAG="${OLLAMA_TAG:-latest}"
 
-# Image versions (pinned for reproducibility)
-OPERATOR_TAG="dev"
-AGENT_TAG="dev"
-LITELLM_VERSION="v1.56.5"
-# alpine/ollama only has 'latest' tag - using it for simplicity
-OLLAMA_TAG="latest"
+echo "=== Generating Helm values file ==="
+"${SCRIPT_DIR}/update-kind-e2e-values.sh"
+HELM_VALUES_FILE="${SCRIPT_DIR}/kind-e2e-values.yaml"
 
+echo ""
 echo "=== Building and pushing images to local registry ==="
 
 # Build and push operator
 echo "Building operator image..."
-docker build -t "${LOCAL_REGISTRY}/agentic-operator:${OPERATOR_TAG}" "${PROJECT_ROOT}/operator/"
-docker push "${LOCAL_REGISTRY}/agentic-operator:${OPERATOR_TAG}"
+docker build -t "${REGISTRY}/agentic-operator:${OPERATOR_TAG}" "${PROJECT_ROOT}/operator/"
+docker push "${REGISTRY}/agentic-operator:${OPERATOR_TAG}"
 
 # Build and push agent runtime
 echo "Building agent runtime image..."
-docker build -t "${LOCAL_REGISTRY}/agentic-agent:${AGENT_TAG}" "${PROJECT_ROOT}/python/"
-docker push "${LOCAL_REGISTRY}/agentic-agent:${AGENT_TAG}"
+docker build -t "${REGISTRY}/agentic-agent:${AGENT_TAG}" "${PROJECT_ROOT}/python/"
+docker push "${REGISTRY}/agentic-agent:${AGENT_TAG}"
 
 # Tag same image for MCP server (they use the same base)
-docker tag "${LOCAL_REGISTRY}/agentic-agent:${AGENT_TAG}" "${LOCAL_REGISTRY}/agentic-mcp-server:${AGENT_TAG}"
-docker push "${LOCAL_REGISTRY}/agentic-mcp-server:${AGENT_TAG}"
+docker tag "${REGISTRY}/agentic-agent:${AGENT_TAG}" "${REGISTRY}/agentic-mcp-server:${AGENT_TAG}"
+docker push "${REGISTRY}/agentic-mcp-server:${AGENT_TAG}"
 
 # Build minimal LiteLLM image from our Dockerfile
 echo "Building minimal LiteLLM image..."
-docker build -t "${LOCAL_REGISTRY}/litellm:${LITELLM_VERSION}" -f "${SCRIPT_DIR}/Dockerfile.litellm" "${SCRIPT_DIR}"
-docker push "${LOCAL_REGISTRY}/litellm:${LITELLM_VERSION}"
+docker build -t "${REGISTRY}/litellm:${LITELLM_VERSION}" -f "${SCRIPT_DIR}/Dockerfile.litellm" "${SCRIPT_DIR}"
+docker push "${REGISTRY}/litellm:${LITELLM_VERSION}"
 
 # Pull and push Ollama image (using alpine/ollama for smaller size)
 echo "Pulling and pushing Ollama image..."
 docker pull "alpine/ollama:${OLLAMA_TAG}"
-docker tag "alpine/ollama:${OLLAMA_TAG}" "${LOCAL_REGISTRY}/ollama:${OLLAMA_TAG}"
-docker push "${LOCAL_REGISTRY}/ollama:${OLLAMA_TAG}"
+docker tag "alpine/ollama:${OLLAMA_TAG}" "${REGISTRY}/ollama:${OLLAMA_TAG}"
+docker push "${REGISTRY}/ollama:${OLLAMA_TAG}"
 
 echo ""
-echo "=== Running E2E tests ==="
+echo "=== Setting up test environment ==="
 cd "${PROJECT_ROOT}/operator/tests"
 
 # Ensure virtual environment exists
@@ -58,12 +63,10 @@ else
     source .venv/bin/activate
 fi
 
-# Use the checked-in values file
-HELM_VALUES_FILE="${SCRIPT_DIR}/kind-e2e-values.yaml"
 echo "Using Helm values: ${HELM_VALUES_FILE}"
 
-# Pre-install operator with Gateway
-echo "Pre-installing operator to get Gateway..."
+# Install operator with Gateway
+echo "Installing operator with Gateway..."
 kubectl create namespace agentic-e2e-system 2>/dev/null || true
 kubectl apply --server-side -f "${PROJECT_ROOT}/operator/config/crd/bases"
 helm upgrade --install agentic-e2e "${PROJECT_ROOT}/operator/chart" \
@@ -108,24 +111,38 @@ if ! curl -s --connect-timeout 5 http://localhost:8888 > /dev/null 2>&1; then
     sleep 5
 fi
 
-# Cleanup function
+# Cleanup function - always uninstall operator and stop port-forward
 cleanup() {
+    echo ""
+    echo "=== Cleaning up ==="
     echo "Stopping port-forward..."
     kill $PORT_FORWARD_PID 2>/dev/null || true
+    
+    echo "Uninstalling operator..."
+    helm uninstall agentic-e2e -n agentic-e2e-system 2>/dev/null || true
+    kubectl delete namespace agentic-e2e-system --wait=false 2>/dev/null || true
+    
+    # Clean up leftover test namespaces
+    kubectl get ns -o name | grep -E "e2e-(gw[0-9]+|main)" | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true
+    
+    # Clean up generated values file
+    rm -f "${HELM_VALUES_FILE}"
 }
 trap cleanup EXIT
 
-# Run tests with Gateway URL and Helm values
-# Set SKIP_OPERATOR_UNINSTALL to preserve Gateway between test runs (for port-forward)
+# Run tests
 export HELM_VALUES_FILE="${HELM_VALUES_FILE}"
 export GATEWAY_URL="http://localhost:8888"
-export SKIP_OPERATOR_UNINSTALL=1
+# Tell conftest.py that we handle operator lifecycle externally
+export OPERATOR_MANAGED_EXTERNALLY=1
 echo "Using Gateway URL: ${GATEWAY_URL}"
 
-# Clean up any leftover test namespaces (but not the operator namespace with Gateway!)
+# Clean up any leftover test namespaces from previous runs
 echo "Cleaning up leftover test namespaces..."
 kubectl get ns -o name | grep -E "e2e-(gw[0-9]+|main)" | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true
 sleep 2
 
 # Run tests using make test
+echo ""
+echo "=== Running E2E tests ==="
 make test
