@@ -168,15 +168,11 @@ def _install_operator():
 def _uninstall_operator():
     """Uninstall operator - called only when all workers are done.
     
-    Note: With xdist parallel execution, we don't uninstall automatically
-    since other workers may still need the operator. Manual cleanup via
-    'make clean' is recommended after test runs.
-    
-    Set SKIP_OPERATOR_UNINSTALL=1 to preserve operator between test runs
-    (useful for KIND clusters with port-forward).
+    Note: With xdist parallel execution or when operator is managed externally
+    (e.g., by run-e2e-tests.sh), we skip the uninstall.
     """
-    # Skip uninstall if explicitly disabled (e.g., for KIND with port-forward)
-    if os.environ.get("SKIP_OPERATOR_UNINSTALL"):
+    # Skip if operator lifecycle is managed externally (e.g., KIND E2E script)
+    if os.environ.get("OPERATOR_MANAGED_EXTERNALLY"):
         return
     
     # Only uninstall if running without xdist (single worker)
