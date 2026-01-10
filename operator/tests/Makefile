@@ -2,7 +2,7 @@
 .PHONY: test test-seq clean
 
 test:
-	uv run pytest e2e/ -v -n $(NPROC) --dist loadscope
+	uv run pytest e2e/ -v -n $(nproc --all) --dist loadscope
 
 test-seq:
 	uv run pytest e2e/ -v
