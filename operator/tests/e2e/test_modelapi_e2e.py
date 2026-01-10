@@ -80,8 +80,8 @@ async def test_modelapi_proxy_mock_response(test_namespace: str):
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(
-    os.environ.get("CI") == "true",
-    reason="Requires Ollama running on host (not available in CI)"
+    os.environ.get("CI") == "true" or os.environ.get("KIND_CLUSTER") == "true",
+    reason="Requires Ollama running on host (not available in CI/KIND)"
 )
 async def test_modelapi_proxy_with_ollama(test_namespace: str):
     """Test ModelAPI Proxy mode with real Ollama backend."""

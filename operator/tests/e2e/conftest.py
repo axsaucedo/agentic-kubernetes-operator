@@ -259,7 +259,33 @@ def create_modelapi_resource(namespace: str, name: str = "mock-proxy") -> Dict[s
 
 
 def create_modelapi_hosted_resource(namespace: str, name: str = "ollama-hosted") -> Dict[str, Any]:
-    """Create a ModelAPI resource spec for Proxy mode with Ollama backend."""
+    """Create a ModelAPI resource spec for Hosted mode with in-cluster Ollama.
+    
+    This runs Ollama inside the cluster with the smollm2:135m model.
+    The model is pulled via an init container.
+    """
+    return {
+        "apiVersion": "ethical.institute/v1alpha1",
+        "kind": "ModelAPI",
+        "metadata": {"name": name, "namespace": namespace},
+        "spec": {
+            "mode": "Hosted",
+            "hostedConfig": {
+                "model": "smollm2:135m",
+                "env": [
+                    {"name": "OLLAMA_DEBUG", "value": "false"},
+                ]
+            },
+        },
+    }
+
+
+def create_modelapi_proxy_ollama_resource(namespace: str, name: str = "ollama-proxy") -> Dict[str, Any]:
+    """Create a ModelAPI resource spec for Proxy mode with host Ollama backend.
+    
+    This connects to Ollama running on the host machine via host.docker.internal.
+    Only works in Docker Desktop, NOT in KIND/CI.
+    """
     return {
         "apiVersion": "ethical.institute/v1alpha1",
         "kind": "ModelAPI",
@@ -297,14 +323,20 @@ def create_mcpserver_resource(namespace: str, name: str = "echo-server") -> Dict
 def create_agent_resource(namespace: str, modelapi_name: str, mcpserver_names: list,
                          agent_name: str = "echo-agent", 
                          sub_agents: list = None,
-                         reasoning_loop_max_steps: int = None) -> Dict[str, Any]:
-    """Create an Agent resource."""
+                         reasoning_loop_max_steps: int = None,
+                         model_name: str = "ollama/smollm2:135m") -> Dict[str, Any]:
+    """Create an Agent resource.
+    
+    Args:
+        model_name: Model name to use. For Proxy mode, use 'ollama/smollm2:135m'.
+                   For Hosted mode (direct Ollama), use 'smollm2:135m'.
+    """
     config = {
         "description": "E2E test echo agent",
         "instructions": "You are a helpful test assistant.",
         "env": [
             {"name": "AGENT_LOG_LEVEL", "value": "INFO"},
-            {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
+            {"name": "MODEL_NAME", "value": model_name},
         ],
     }
     
