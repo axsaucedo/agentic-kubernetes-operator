@@ -118,13 +118,17 @@ All workflows are triggered on PRs and pushes to `main`, with path filters to av
 
 ### Local CI Testing
 
-You can test the GitHub Actions workflow locally using [act](https://github.com/nektos/act):
+You can test some GitHub Actions workflows locally using [act](https://github.com/nektos/act):
 
 ```bash
-act push -W .github/workflows/e2e-tests.yaml
+# Test Python tests (works well)
+act -j python-tests --container-architecture linux/amd64
+
+# Test Go tests (may fail due to envtest limitations in Docker)
+act -j go-tests --container-architecture linux/amd64
 ```
 
-Note: Some features may not work identically to GitHub Actions.
+**Note:** Go integration tests may fail in `act` due to envtest control plane limitations in Docker, especially on ARM machines. These tests work correctly in the actual GitHub Actions runners.
 
 ## Code Style
 
