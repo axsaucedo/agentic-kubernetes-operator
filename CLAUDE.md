@@ -15,8 +15,9 @@ python/                    # Agent runtime framework
 │   └── client.py          # MCPClient for tool discovery and invocation
 ├── modelapi/              # Model API client
 │   └── client.py          # ModelAPI for OpenAI-compatible servers (supports mock_response)
+├── Makefile               # Python build and test targets
 ├── Dockerfile             # Agent container image
-└── tests/                 # Test suite (34 tests)
+└── tests/                 # Test suite (36 tests)
 
 operator/                  # Kubernetes operator (Go/kubebuilder)
 ├── api/v1alpha1/          # CRD type definitions
@@ -31,13 +32,25 @@ operator/                  # Kubernetes operator (Go/kubebuilder)
 ├── config/                # Kubernetes manifests
 │   ├── crd/bases/         # CRD YAML files
 │   └── samples/           # Example resources
+├── hack/                  # CI/CD scripts
+│   ├── run-e2e-tests.sh   # Main E2E test runner
+│   ├── build-push-images.sh
+│   ├── kind-with-registry.sh
+│   ├── install-gateway.sh
+│   └── install-metallb.sh
+├── Makefile               # Operator build, test, and E2E targets
 └── tests/e2e/             # E2E tests (14 tests)
+
+.github/workflows/         # GitHub Actions
+├── e2e-tests.yaml         # E2E tests in KIND
+├── go-tests.yaml          # Go unit tests
+└── python-tests.yaml      # Python unit tests
 ```
 
 ## Key Principles
 - **KEEP IT SIMPLE** - Avoid over-engineering
 - Python commands: `cd python && source .venv/bin/activate && <command>`
-- Operator tests: `cd operator/tests && source .venv/bin/activate && <command>`
+- Operator E2E: `cd operator && make kind-e2e`
 - Tests are the success criteria for development
 - **Documentation**: When making changes, update both `CLAUDE.md` AND `docs/` directory
 
@@ -50,7 +63,13 @@ source .venv/bin/activate
 python -m pytest tests/ -v  # Run all 36 tests
 ```
 
-### Kubernetes E2E Tests
+### Go Unit Tests
+```bash
+cd operator
+make test-unit  # Runs envtest-based integration tests
+```
+
+### Kubernetes E2E Tests (Docker Desktop)
 
 E2E tests use Gateway API for routing and Helm for operator installation.
 
@@ -59,18 +78,34 @@ E2E tests use Gateway API for routing and Helm for operator installation.
 # kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/experimental-install.yaml
 # helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm --namespace envoy-gateway-system --create-namespace
 
-# Run E2E tests (parallel by default - uses all CPUs)
-cd operator/tests
-source .venv/bin/activate
-make test              # Parallel execution (~3 min, 14 tests)
-make test-seq          # Sequential execution (~7 min)
-make clean             # Clean up test resources
+cd operator
+make e2e-test      # Parallel execution
+make e2e-test-seq  # Sequential execution with debug output
+make e2e-clean     # Clean up test resources
 ```
 
-**Note**: Tests auto-install operator via Helm with Gateway API enabled. No manual operator start needed.
+### KIND E2E Tests (Isolated Cluster)
+
+Run E2E tests in an isolated KIND cluster with local registry:
+
+```bash
+cd operator
+
+# Create KIND cluster with Gateway API and MetalLB
+make kind-create
+
+# Run full E2E test suite in KIND (builds images, installs operator, runs tests)
+make kind-e2e
+
+# Delete KIND cluster
+make kind-delete
+```
+
+The `kind-e2e` target builds images, loads into KIND, and runs tests.
+This is the same setup used in GitHub Actions CI.
 
 ## Dependencies
-- Ollama running locally with `smollm2:135m` model
+- Ollama running locally with `smollm2:135m` model (for local host-Ollama tests)
 - Docker Desktop with Kubernetes enabled
 - `docker-desktop` kubectl context
 - Gateway API CRDs installed

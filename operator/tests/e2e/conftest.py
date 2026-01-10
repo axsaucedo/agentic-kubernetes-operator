@@ -16,8 +16,8 @@ from sh import kubectl, helm, ErrorReturnCode
 import yaml
 
 
-# Gateway configuration
-GATEWAY_URL = "http://localhost:80"
+# Gateway configuration - can be overridden via environment variable for KIND clusters
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:80")
 CHART_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../chart"))
 RELEASE_NAME = "agentic-e2e"
 OPERATOR_NAMESPACE = "agentic-e2e-system"
@@ -65,11 +65,18 @@ def wait_for_deployment(namespace: str, name: str, timeout: int = 300):
             "--timeout", f"{remaining_timeout}s")
 
 
-def wait_for_resource_ready(url: str, max_wait: int = 30) -> bool:
-    """Wait for a resource to be accessible via Gateway."""
+def wait_for_resource_ready(url: str, max_wait: int = 30, health_path: str = "/health") -> bool:
+    """Wait for a resource to be accessible via Gateway.
+    
+    Args:
+        url: Base URL of the resource
+        max_wait: Maximum seconds to wait
+        health_path: Health endpoint path (default: /health)
+            For LiteLLM ModelAPI, use /health/liveliness for faster response
+    """
     for _ in range(max_wait * 4):
         try:
-            response = httpx.get(f"{url}/health", timeout=2.0)
+            response = httpx.get(f"{url}{health_path}", timeout=2.0)
             if response.status_code == 200:
                 return True
         except Exception:
@@ -119,17 +126,29 @@ def _install_operator():
         kubectl("apply", "--server-side", "-f", crd_path)
         
         # Install operator with Gateway API enabled
-        helm(
+        helm_args = [
             "upgrade", "--install", RELEASE_NAME, CHART_PATH,
             "--namespace", OPERATOR_NAMESPACE,
-            "--set", "controllerManager.manager.image.repository=agentic-operator",
-            "--set", "controllerManager.manager.image.tag=latest",
+        ]
+        # Support custom values file for CI (e.g., KIND registry images)
+        # Values file must come before --set flags so --set can override if needed
+        values_file = os.environ.get("HELM_VALUES_FILE")
+        if values_file and os.path.exists(values_file):
+            helm_args.extend(["-f", values_file])
+        else:
+            # Default to local images for Docker Desktop
+            helm_args.extend([
+                "--set", "controllerManager.manager.image.repository=agentic-operator",
+                "--set", "controllerManager.manager.image.tag=latest",
+            ])
+        helm_args.extend([
             "--set", "gatewayAPI.enabled=true",
             "--set", "gatewayAPI.createGateway=true",
             "--set", "gatewayAPI.gatewayClassName=envoy-gateway",
             "--skip-crds",
             "--wait", "--timeout", "120s"
-        )
+        ])
+        helm(*helm_args)
         
         # Wait for Gateway to be ready
         for _ in range(30):
@@ -149,10 +168,13 @@ def _install_operator():
 def _uninstall_operator():
     """Uninstall operator - called only when all workers are done.
     
-    Note: With xdist parallel execution, we don't uninstall automatically
-    since other workers may still need the operator. Manual cleanup via
-    'make clean' is recommended after test runs.
+    Note: With xdist parallel execution or when operator is managed externally
+    (e.g., by run-e2e-tests.sh), we skip the uninstall.
     """
+    # Skip if operator lifecycle is managed externally (e.g., KIND E2E script)
+    if os.environ.get("OPERATOR_MANAGED_EXTERNALLY"):
+        return
+    
     # Only uninstall if running without xdist (single worker)
     if os.environ.get("PYTEST_XDIST_WORKER"):
         return  # Skip cleanup in parallel mode
@@ -237,7 +259,33 @@ def create_modelapi_resource(namespace: str, name: str = "mock-proxy") -> Dict[s
 
 
 def create_modelapi_hosted_resource(namespace: str, name: str = "ollama-hosted") -> Dict[str, Any]:
-    """Create a ModelAPI resource spec for Proxy mode with Ollama backend."""
+    """Create a ModelAPI resource spec for Hosted mode with in-cluster Ollama.
+    
+    This runs Ollama inside the cluster with the smollm2:135m model.
+    The model is pulled via an init container.
+    """
+    return {
+        "apiVersion": "ethical.institute/v1alpha1",
+        "kind": "ModelAPI",
+        "metadata": {"name": name, "namespace": namespace},
+        "spec": {
+            "mode": "Hosted",
+            "hostedConfig": {
+                "model": "smollm2:135m",
+                "env": [
+                    {"name": "OLLAMA_DEBUG", "value": "false"},
+                ]
+            },
+        },
+    }
+
+
+def create_modelapi_proxy_ollama_resource(namespace: str, name: str = "ollama-proxy") -> Dict[str, Any]:
+    """Create a ModelAPI resource spec for Proxy mode with host Ollama backend.
+    
+    This connects to Ollama running on the host machine via host.docker.internal.
+    Only works in Docker Desktop, NOT in KIND/CI.
+    """
     return {
         "apiVersion": "ethical.institute/v1alpha1",
         "kind": "ModelAPI",
@@ -275,14 +323,20 @@ def create_mcpserver_resource(namespace: str, name: str = "echo-server") -> Dict
 def create_agent_resource(namespace: str, modelapi_name: str, mcpserver_names: list,
                          agent_name: str = "echo-agent", 
                          sub_agents: list = None,
-                         reasoning_loop_max_steps: int = None) -> Dict[str, Any]:
-    """Create an Agent resource."""
+                         reasoning_loop_max_steps: int = None,
+                         model_name: str = "ollama/smollm2:135m") -> Dict[str, Any]:
+    """Create an Agent resource.
+    
+    Args:
+        model_name: Model name to use. For Proxy mode, use 'ollama/smollm2:135m'.
+                   For Hosted mode (direct Ollama), use 'smollm2:135m'.
+    """
     config = {
         "description": "E2E test echo agent",
         "instructions": "You are a helpful test assistant.",
         "env": [
             {"name": "AGENT_LOG_LEVEL", "value": "INFO"},
-            {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
+            {"name": "MODEL_NAME", "value": model_name},
         ],
     }
     

@@ -1,0 +1,71 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'operator/**'
+      - 'python/**'
+      - '.github/workflows/e2e-tests.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'operator/**'
+      - 'python/**'
+      - '.github/workflows/e2e-tests.yaml'
+  workflow_dispatch:
+
+env:
+  KIND_CLUSTER_NAME: agentic-e2e
+  CI: true
+  KIND_CLUSTER: true
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: operator/go.mod
+          cache-dependency-path: operator/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Create KIND cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Install Gateway API and Envoy Gateway
+        run: ./operator/hack/install-gateway.sh
+
+      - name: Install MetalLB for LoadBalancer support
+        run: ./operator/hack/install-metallb.sh
+
+      - name: Run E2E tests
+        run: ./operator/hack/run-e2e-tests.sh
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== Cluster Info ==="
+          kubectl cluster-info
+          echo "=== All Namespaces ==="
+          kubectl get ns
+          echo "=== Operator Logs ==="
+          kubectl logs -n agentic-e2e-system -l app.kubernetes.io/name=agentic-operator --tail=100 || true
+          echo "=== All Pods ==="
+          kubectl get pods -A
+          echo "=== Events ==="
+          kubectl get events -A --sort-by='.lastTimestamp' | tail -50

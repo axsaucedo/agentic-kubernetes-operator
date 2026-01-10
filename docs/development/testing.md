@@ -327,7 +327,71 @@ def test_namespace():
 
 ## CI/CD Integration
 
-### GitHub Actions Example
+### GitHub Actions E2E Tests
+
+The project includes a GitHub Actions workflow that runs E2E tests in an isolated KIND cluster. See `.github/workflows/e2e-tests.yaml`.
+
+The workflow:
+1. Creates a KIND cluster with a local Docker registry
+2. Installs Gateway API CRDs and Envoy Gateway
+3. Builds and pushes operator/agent images to the local registry
+4. Runs the full E2E test suite
+
+### Local KIND Testing
+
+You can run the same E2E tests locally using KIND:
+
+```bash
+# Create KIND cluster with Gateway API, MetalLB, and registry (one-time setup)
+make kind-create
+
+# Run E2E tests in KIND
+make kind-e2e
+
+# Delete KIND cluster when done
+make kind-delete
+```
+
+The `kind-create` target:
+1. Creates KIND cluster with local Docker registry
+2. Installs Gateway API CRDs and Envoy Gateway
+3. Creates the GatewayClass for Envoy Gateway
+4. Installs MetalLB for LoadBalancer support
+
+The `kind-e2e` target:
+1. Builds all Docker images (including pulling external LiteLLM/Ollama images)
+2. Pushes images to the local KIND registry (localhost:5001)
+3. Pre-installs the operator to create the Gateway
+4. Sets up port-forwarding to the Gateway for host access
+5. Runs all 14 E2E tests in parallel
+
+**Note:** On macOS, the script uses `kubectl port-forward` because Docker's bridge
+network is not directly accessible from the host. The tests use port 8888 locally.
+
+### Custom Helm Values for CI
+
+The E2E tests support a `HELM_VALUES_FILE` environment variable to override default Helm values:
+
+```bash
+# Create custom values file
+cat > /tmp/my-values.yaml << EOF
+controllerManager:
+  manager:
+    image:
+      repository: my-registry/agentic-operator
+      tag: v1.0.0
+    imagePullPolicy: Always
+defaultImages:
+  agentRuntime: my-registry/agentic-agent:v1.0.0
+  mcpServer: my-registry/agentic-mcp-server:v1.0.0
+EOF
+
+# Run tests with custom values
+cd operator/tests
+HELM_VALUES_FILE=/tmp/my-values.yaml make test
+```
+
+### Python Unit Tests GitHub Actions Example
 
 ```yaml
 name: Tests
@@ -338,8 +402,8 @@ jobs:
   python-tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
     - name: Install dependencies
@@ -350,22 +414,6 @@ jobs:
       run: |
         cd python
         pytest tests/ -v
-
-  e2e-tests:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Start kind cluster
-      uses: helm/kind-action@v1
-    - name: Deploy operator
-      run: |
-        cd operator
-        make deploy
-    - name: Run E2E tests
-      run: |
-        cd operator/tests
-        pip install -r requirements.txt
-        pytest e2e/ -v
 ```
 
 ## Test Markers

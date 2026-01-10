@@ -7,6 +7,7 @@ Tests the agentic loop via Gateway API:
 - Agentic loop configuration via CRD
 """
 
+import os
 import time
 import pytest
 import httpx
@@ -20,8 +21,13 @@ from e2e.conftest import (
 )
 
 
-def create_agentic_loop_worker(namespace: str, modelapi_name: str, suffix: str = ""):
-    """Create worker agent spec for agentic loop testing."""
+def create_agentic_loop_worker(namespace: str, modelapi_name: str, suffix: str = "", model_name: str = "ollama/smollm2:135m"):
+    """Create worker agent spec for agentic loop testing.
+    
+    Args:
+        model_name: Model name. For Proxy mode use 'ollama/smollm2:135m', 
+                   for Hosted mode use 'smollm2:135m'.
+    """
     name = f"loop-worker{suffix}"
     return {
         "apiVersion": "ethical.institute/v1alpha1",
@@ -35,7 +41,7 @@ def create_agentic_loop_worker(namespace: str, modelapi_name: str, suffix: str =
                 "reasoningLoopMaxSteps": 3,
                 "env": [
                     {"name": "AGENT_LOG_LEVEL", "value": "DEBUG"},
-                    {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
+                    {"name": "MODEL_NAME", "value": model_name},
                 ],
             },
             "agentNetwork": {"access": []},
@@ -43,8 +49,13 @@ def create_agentic_loop_worker(namespace: str, modelapi_name: str, suffix: str =
     }, name
 
 
-def create_agentic_loop_coordinator(namespace: str, modelapi_name: str, worker_name: str, suffix: str = ""):
-    """Create coordinator agent spec for agentic loop testing."""
+def create_agentic_loop_coordinator(namespace: str, modelapi_name: str, worker_name: str, suffix: str = "", model_name: str = "ollama/smollm2:135m"):
+    """Create coordinator agent spec for agentic loop testing.
+    
+    Args:
+        model_name: Model name. For Proxy mode use 'ollama/smollm2:135m', 
+                   for Hosted mode use 'smollm2:135m'.
+    """
     name = f"loop-coord{suffix}"
     return {
         "apiVersion": "ethical.institute/v1alpha1",
@@ -58,7 +69,7 @@ def create_agentic_loop_coordinator(namespace: str, modelapi_name: str, worker_n
                 "reasoningLoopMaxSteps": 5,
                 "env": [
                     {"name": "AGENT_LOG_LEVEL", "value": "DEBUG"},
-                    {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
+                    {"name": "MODEL_NAME", "value": model_name},
                 ],
             },
             "agentNetwork": {"access": [worker_name]},
@@ -160,14 +171,21 @@ async def test_delegation_with_memory_verification(test_namespace: str, shared_m
 
 @pytest.mark.asyncio
 async def test_agent_processes_with_memory_events(test_namespace: str):
-    """Test that agent processing creates correct memory events."""
-    # Create a ModelAPI with Ollama backend for actual inference
+    """Test that agent processing creates correct memory events.
+    
+    Uses Hosted mode ModelAPI which runs Ollama in-cluster.
+    """
+    # Create a ModelAPI with in-cluster Ollama for actual inference
     modelapi_name = "loop-ollama-mem"
     modelapi_spec = create_modelapi_hosted_resource(test_namespace, modelapi_name)
     create_custom_resource(modelapi_spec, test_namespace)
-    wait_for_deployment(test_namespace, f"modelapi-{modelapi_name}", timeout=120)
+    # Hosted mode needs longer timeout for model pull
+    wait_for_deployment(test_namespace, f"modelapi-{modelapi_name}", timeout=180)
     
-    worker_spec, worker_name = create_agentic_loop_worker(test_namespace, modelapi_name, "-mem")
+    # Use model_name for Hosted mode (direct Ollama)
+    worker_spec, worker_name = create_agentic_loop_worker(
+        test_namespace, modelapi_name, "-mem", model_name="smollm2:135m"
+    )
     
     create_custom_resource(worker_spec, test_namespace)
     wait_for_deployment(test_namespace, f"agent-{worker_name}", timeout=120)

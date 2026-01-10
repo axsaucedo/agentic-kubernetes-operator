@@ -7,6 +7,7 @@ dependencies = [
     "httpx>=0.28.1",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
+    "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "sh>=2.2.2",
     "mcp>=1.0.0",
@@ -19,13 +20,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["e2e"]
 
-[dependency-groups]
-dev = [
-    "pytest-xdist>=3.8.0",
-]
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-# Parallel execution: use -n 2 --dist loadscope for ~3min runtime
+# Parallel execution: use -n 4 --dist loadscope for ~3min runtime
 # Sequential execution (default): ~6min runtime
-# Example: pytest e2e/ -n 2 --dist loadscope
+# Example: pytest e2e/ -n 4 --dist loadscope
