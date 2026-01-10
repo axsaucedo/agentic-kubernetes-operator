@@ -1,17 +1,21 @@
 #!/bin/bash
-# Runs E2E tests in KIND cluster with local registry.
-# This script builds all images, pushes them to the local registry, and runs tests.
+# Runs E2E tests in KIND cluster.
+# This script builds all images, loads them into KIND, and runs tests.
 #
 # The operator is installed once at the start and uninstalled at the end.
 # Port-forward is maintained throughout the test run.
+#
+# Prerequisites:
+#   - KIND cluster created with: make kind-create
+#   - Gateway and MetalLB installed (done by kind-create)
 set -o errexit
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Configuration - single source of truth for versions
-export REG_PORT="${REGISTRY_PORT:-5001}"
-export REGISTRY="localhost:${REG_PORT}"
+export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-agentic-e2e}"
+export REGISTRY="${REGISTRY:-kind-local}"
 export OPERATOR_TAG="${OPERATOR_TAG:-dev}"
 export AGENT_TAG="${AGENT_TAG:-dev}"
 export LITELLM_VERSION="${LITELLM_VERSION:-v1.56.5}"
@@ -22,22 +26,20 @@ echo "=== Generating Helm values file ==="
 HELM_VALUES_FILE="${SCRIPT_DIR}/kind-e2e-values.yaml"
 
 echo ""
-echo "=== Building and pushing images to local registry ==="
+echo "=== Building images and loading into KIND ==="
 "${SCRIPT_DIR}/build-push-images.sh"
 
 echo ""
 echo "=== Setting up test environment ==="
 cd "${PROJECT_ROOT}/operator/tests"
 
-# Ensure virtual environment exists
+# Ensure virtual environment exists and has dependencies
 if [ ! -d ".venv" ]; then
     echo "Creating Python virtual environment..."
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -e ".[dev]"
-else
-    source .venv/bin/activate
+    uv venv
 fi
+source .venv/bin/activate
+uv pip install -e .
 
 echo "Using Helm values: ${HELM_VALUES_FILE}"
 

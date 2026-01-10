@@ -1,16 +1,11 @@
-# E2E Tests - parallel by default
-NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-
-.PHONY: test test-seq install clean
+# E2E Tests - parallel by default (4 workers)
+.PHONY: test test-seq clean
 
 test:
-	python -m pytest e2e/ -v -n $(NPROC) --dist loadscope
+	python -m pytest e2e/ -v -n 4 --dist loadscope
 
 test-seq:
 	python -m pytest e2e/ -v
-
-install:
-	pip install -e ".[dev]"
 
 clean:
 	@echo "Cleaning up test resources..."
