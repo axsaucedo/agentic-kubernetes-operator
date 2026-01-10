@@ -32,3 +32,14 @@ serviceAccount:
   automount: true
   create: true
   name: ""
+# Gateway API configuration
+gateway:
+  # Default timeouts for HTTPRoute resources (Gateway API Duration format)
+  # These can be overridden per-resource using spec.gatewayRoute.timeout
+  defaultTimeouts:
+    # Agent timeout - agents may do multi-step reasoning
+    agent: "120s"
+    # ModelAPI timeout - LLM inference can take time
+    modelAPI: "120s"
+    # MCP timeout - tool calls are typically fast
+    mcp: "30s"

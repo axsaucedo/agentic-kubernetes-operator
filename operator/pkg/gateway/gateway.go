@@ -21,15 +21,37 @@ type Config struct {
 	Enabled          bool
 	GatewayName      string
 	GatewayNamespace string
+	// Default timeouts for each resource type (Gateway API Duration format)
+	DefaultAgentTimeout    string
+	DefaultModelAPITimeout string
+	DefaultMCPTimeout      string
 }
+
+// Default timeout values (used when env vars are not set)
+const (
+	defaultAgentTimeout    = "120s" // Agents may do multi-step reasoning
+	defaultModelAPITimeout = "120s" // LLM inference can take time
+	defaultMCPTimeout      = "30s"  // Tool calls are typically fast
+)
 
 // GetConfig reads Gateway API configuration from environment variables
 func GetConfig() Config {
 	return Config{
-		Enabled:          os.Getenv("GATEWAY_API_ENABLED") == "true",
-		GatewayName:      os.Getenv("GATEWAY_NAME"),
-		GatewayNamespace: os.Getenv("GATEWAY_NAMESPACE"),
+		Enabled:                os.Getenv("GATEWAY_API_ENABLED") == "true",
+		GatewayName:            os.Getenv("GATEWAY_NAME"),
+		GatewayNamespace:       os.Getenv("GATEWAY_NAMESPACE"),
+		DefaultAgentTimeout:    getEnvOrDefault("DEFAULT_AGENT_TIMEOUT", defaultAgentTimeout),
+		DefaultModelAPITimeout: getEnvOrDefault("DEFAULT_MODELAPI_TIMEOUT", defaultModelAPITimeout),
+		DefaultMCPTimeout:      getEnvOrDefault("DEFAULT_MCP_TIMEOUT", defaultMCPTimeout),
 	}
+}
+
+// getEnvOrDefault returns the value of an environment variable or a default value
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 // ResourceType identifies the type of agentic resource
@@ -70,17 +92,18 @@ type HTTPRouteParams struct {
 	Timeout string
 }
 
-// DefaultTimeout returns the default timeout for a resource type
+// DefaultTimeout returns the default timeout for a resource type from config
 func DefaultTimeout(resourceType ResourceType) string {
+	config := GetConfig()
 	switch resourceType {
 	case ResourceTypeModelAPI:
-		return "120s" // LLM inference can take time
+		return config.DefaultModelAPITimeout
 	case ResourceTypeAgent:
-		return "120s" // Agents may do multi-step reasoning
+		return config.DefaultAgentTimeout
 	case ResourceTypeMCP:
-		return "30s" // Tool calls are typically fast
+		return config.DefaultMCPTimeout
 	default:
-		return "30s"
+		return config.DefaultMCPTimeout
 	}
 }
 
