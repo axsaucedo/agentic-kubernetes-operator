@@ -103,7 +103,7 @@ kind-e2e: kind-create
 # Run E2E tests (parallel) - requires existing cluster
 e2e-test:
 	@cd tests && \
-	JOBS="$$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"; \
+	JOBS="$$(nproc --all 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"; \
 	uv run pytest e2e/ -v -n "$$JOBS" --dist loadscope
 
 # Run E2E tests sequentially - requires existing cluster
