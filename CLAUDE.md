@@ -261,6 +261,36 @@ Controls agent startup behavior:
 - `true` (default): Agent waits for ModelAPI and MCPServers to be Ready before creating deployment
 - `false`: Agent deployment created immediately; handles unavailable dependencies at runtime
 
+### Gateway Route Configuration
+All CRDs (Agent, MCPServer, ModelAPI) support `gatewayRoute` for customizing HTTPRoute behavior:
+
+```yaml
+spec:
+  gatewayRoute:
+    timeout: "120s"  # Request timeout for this resource's HTTPRoute
+```
+
+**Default Timeouts** (configured via Helm chart values or operator env vars):
+- Agent: 120s (multi-step reasoning)
+- ModelAPI: 120s (LLM inference can take time)
+- MCPServer: 30s (tool calls are typically fast)
+
+**Operator Environment Variables:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DEFAULT_AGENT_TIMEOUT` | Default timeout for Agent HTTPRoutes | `120s` |
+| `DEFAULT_MODELAPI_TIMEOUT` | Default timeout for ModelAPI HTTPRoutes | `120s` |
+| `DEFAULT_MCP_TIMEOUT` | Default timeout for MCPServer HTTPRoutes | `30s` |
+
+These can be set via Helm values:
+```yaml
+gateway:
+  defaultTimeouts:
+    agent: "120s"
+    modelAPI: "120s"
+    mcp: "30s"
+```
+
 ### Controller Environment Variables
 The operator sets these env vars on agent pods:
 - `AGENT_NAME`, `AGENT_DESCRIPTION`, `AGENT_INSTRUCTIONS`
