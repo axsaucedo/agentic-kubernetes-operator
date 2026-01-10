@@ -35,6 +35,28 @@ Thank you for your interest in contributing! This document provides guidelines a
    make build
    ```
 
+## Project Structure
+
+```
+agentic-kubernetes-operator/
+├── python/                    # Agent runtime framework
+│   ├── Makefile               # Python build and test targets
+│   └── tests/                 # Python unit tests
+├── operator/                  # Kubernetes operator (Go/kubebuilder)
+│   ├── Makefile               # Operator build, test, and E2E targets
+│   ├── hack/                  # CI/CD scripts and utilities
+│   │   ├── run-e2e-tests.sh   # Main E2E test runner
+│   │   ├── build-push-images.sh
+│   │   ├── kind-with-registry.sh
+│   │   ├── install-gateway.sh
+│   │   └── install-metallb.sh
+│   └── tests/                 # E2E test suite
+└── .github/workflows/         # GitHub Actions
+    ├── e2e-tests.yaml         # E2E tests in KIND
+    ├── go-tests.yaml          # Go unit tests
+    └── python-tests.yaml      # Python unit tests
+```
+
 ## Running Tests
 
 ### Python Unit Tests
@@ -49,7 +71,7 @@ python -m pytest tests/ -v
 
 ```bash
 cd operator
-make test
+make test-unit
 ```
 
 ### E2E Tests (Docker Desktop)
@@ -57,9 +79,9 @@ make test
 If you have Docker Desktop with Kubernetes enabled:
 
 ```bash
-cd operator/tests
-source .venv/bin/activate
-make test
+cd operator
+# Build images and run tests
+make e2e-test
 ```
 
 ### E2E Tests (KIND)
@@ -67,11 +89,16 @@ make test
 For isolated E2E testing using KIND:
 
 ```bash
+cd operator
+
 # Create KIND cluster with local registry and Gateway API
 make kind-create
 
-# Run full E2E test suite
+# Run full E2E test suite (builds images, installs operator, runs tests)
 make kind-e2e
+
+# Or run tests on existing cluster
+make e2e-test
 
 # Clean up
 make kind-delete
@@ -83,7 +110,11 @@ make kind-delete
 
 The project uses GitHub Actions for CI/CD:
 
-- **`.github/workflows/e2e-tests.yaml`** - Runs E2E tests in KIND cluster on PRs and pushes to main
+- **`.github/workflows/e2e-tests.yaml`** - E2E tests in KIND (triggered by operator/ or python/ changes)
+- **`.github/workflows/go-tests.yaml`** - Go unit tests (triggered by operator/ changes)
+- **`.github/workflows/python-tests.yaml`** - Python unit tests (triggered by python/ changes)
+
+All workflows are triggered on PRs and pushes to `main`, with path filters to avoid unnecessary runs.
 
 ### Local CI Testing
 
@@ -124,10 +155,10 @@ Note: Some features may not work identically to GitHub Actions.
    cd python && python -m pytest tests/ -v
    
    # Go tests
-   cd operator && make test
+   cd operator && make test-unit
    
    # E2E tests (optional but recommended)
-   make kind-e2e
+   cd operator && make kind-e2e
    ```
 
 4. **Push and create a PR** against `main`

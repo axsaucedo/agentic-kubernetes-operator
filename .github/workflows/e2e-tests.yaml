@@ -3,12 +3,21 @@ name: E2E Tests
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'operator/**'
+      - 'python/**'
+      - '.github/workflows/e2e-tests.yaml'
   push:
     branches: [main]
+    paths:
+      - 'operator/**'
+      - 'python/**'
+      - '.github/workflows/e2e-tests.yaml'
   workflow_dispatch:
 
 env:
   KIND_CLUSTER_NAME: agentic-e2e
+  CI: true
 
 jobs:
   e2e-tests:
@@ -38,13 +47,13 @@ jobs:
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
 
       - name: Install Gateway API and Envoy Gateway
-        run: ./hack/install-gateway.sh
+        run: ./operator/hack/install-gateway.sh
 
       - name: Install MetalLB for LoadBalancer support
-        run: ./hack/install-metallb.sh
+        run: ./operator/hack/install-metallb.sh
 
       - name: Run E2E tests
-        run: ./hack/run-e2e-tests.sh
+        run: ./operator/hack/run-e2e-tests.sh
 
       - name: Collect logs on failure
         if: failure()

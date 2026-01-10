@@ -6,12 +6,13 @@
 # Port-forward is maintained throughout the test run.
 #
 # Prerequisites:
-#   - KIND cluster created with: make kind-create
+#   - KIND cluster created with: make kind-create (from operator/)
 #   - Gateway and MetalLB installed (done by kind-create)
 set -o errexit
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+OPERATOR_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="$(cd "${OPERATOR_ROOT}/.." && pwd)"
 
 # Configuration - single source of truth for versions
 export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-agentic-e2e}"
@@ -31,7 +32,7 @@ echo "=== Building images and loading into KIND ==="
 
 echo ""
 echo "=== Setting up test environment ==="
-cd "${PROJECT_ROOT}/operator/tests"
+cd "${OPERATOR_ROOT}/tests"
 
 # Ensure virtual environment exists and has dependencies
 if [ ! -d ".venv" ]; then
@@ -46,8 +47,8 @@ echo "Using Helm values: ${HELM_VALUES_FILE}"
 # Install operator with Gateway
 echo "Installing operator with Gateway..."
 kubectl create namespace agentic-e2e-system 2>/dev/null || true
-kubectl apply --server-side -f "${PROJECT_ROOT}/operator/config/crd/bases"
-helm upgrade --install agentic-e2e "${PROJECT_ROOT}/operator/chart" \
+kubectl apply --server-side -f "${OPERATOR_ROOT}/config/crd/bases"
+helm upgrade --install agentic-e2e "${OPERATOR_ROOT}/chart" \
     --namespace agentic-e2e-system \
     -f "${HELM_VALUES_FILE}" \
     --set gatewayAPI.enabled=true \
@@ -120,7 +121,8 @@ echo "Cleaning up leftover test namespaces..."
 kubectl get ns -o name | grep -E "e2e-(gw[0-9]+|main)" | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true
 sleep 2
 
-# Run tests using make test
+# Run tests using operator Makefile target
 echo ""
 echo "=== Running E2E tests ==="
-make test
+cd "${OPERATOR_ROOT}"
+make e2e-test

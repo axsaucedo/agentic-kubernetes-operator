@@ -14,6 +14,8 @@
 set -o errexit
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OPERATOR_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="$(cd "${OPERATOR_ROOT}/.." && pwd)"
 
 # Validate required variables
 if [ -z "${REGISTRY}" ]; then
@@ -28,16 +30,6 @@ AGENT_TAG="${AGENT_TAG:-dev}"
 LITELLM_VERSION="${LITELLM_VERSION:-v1.56.5}"
 OLLAMA_TAG="${OLLAMA_TAG:-latest}"
 
-# Find project root (works from hack/ or project root)
-if [ -d "${SCRIPT_DIR}/../operator" ]; then
-    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-elif [ -d "${SCRIPT_DIR}/operator" ]; then
-    PROJECT_ROOT="${SCRIPT_DIR}"
-else
-    echo "ERROR: Cannot find project root"
-    exit 1
-fi
-
 echo "Building images..."
 echo "  REGISTRY: ${REGISTRY}"
 echo "  KIND_CLUSTER_NAME: ${KIND_CLUSTER_NAME}"
@@ -49,7 +41,7 @@ echo ""
 
 # Build operator
 echo "Building operator image..."
-docker build -t "${REGISTRY}/agentic-operator:${OPERATOR_TAG}" "${PROJECT_ROOT}/operator/"
+docker build -t "${REGISTRY}/agentic-operator:${OPERATOR_TAG}" "${OPERATOR_ROOT}/"
 
 # Build agent runtime
 echo "Building agent runtime image..."
