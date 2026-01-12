@@ -127,7 +127,7 @@ This is the same setup used in GitHub Actions CI.
 
 ### Agent (agent/client.py)
 - `Agent` - Main agent class with agentic loop, message processing, memory, MCP tools, sub-agents
-- `RemoteAgent` - Remote agent client with `_init()` for discovery and `invoke()` for delegation
+- `RemoteAgent` - Remote agent client with `_init()` for discovery and `process_message()` for delegation
 - `MCPClient` - MCP tool client with `_init()` for tool discovery and `call_tool()` for execution
 - `AgentCard` - A2A discovery card with capabilities and skills
 - `AgenticLoopConfig` - Configuration for agentic reasoning loop (max_steps only)
@@ -177,12 +177,16 @@ The agent implements a reasoning loop that:
 ### AgentServer (agent/server.py)
 - `/health` and `/ready` - Kubernetes probes
 - `/.well-known/agent` - A2A agent card endpoint
-- `/agent/invoke` - Task invocation endpoint
-- `/v1/chat/completions` - OpenAI-compatible endpoint with delegation support
+- `/v1/chat/completions` - OpenAI-compatible endpoint (primary API)
 - `/memory/events` and `/memory/sessions` - Debug endpoints (when enabled)
 
+### ModelAPI (modelapi/client.py)
+- `process_message(messages)` - Non-streaming completion, returns str
+- `process_message_stream(messages)` - Streaming completion, yields str chunks
+- Supports `DEBUG_MOCK_RESPONSES` env var for deterministic testing
+
 ### Deterministic Testing with DEBUG_MOCK_RESPONSES
-Set `DEBUG_MOCK_RESPONSES` env var to bypass model API and use mock responses:
+Set `DEBUG_MOCK_RESPONSES` env var on ModelAPI to bypass model API and use mock responses:
 ```bash
 # Single response
 DEBUG_MOCK_RESPONSES='["Hello from mock"]'
