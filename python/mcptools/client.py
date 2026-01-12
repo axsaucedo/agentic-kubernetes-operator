@@ -14,6 +14,7 @@ class MCPClientSettings(BaseSettings):
     # Optional settings
     mcp_client_endpoint: str = "/mcp/tools"
 
+
 @dataclass
 class Tool:
     name: str
@@ -26,11 +27,13 @@ class Tool:
 
 class MCPClient:
     """MCP client with graceful degradation for unavailable servers."""
-    
+
     TIMEOUT = 5.0  # Short timeout - MCP servers should respond quickly
 
     def __init__(self, settings: MCPClientSettings):
-        self._url = f"{settings.mcp_client_host}:{settings.mcp_client_port}{settings.mcp_client_endpoint}"
+        self._url = (
+            f"{settings.mcp_client_host}:{settings.mcp_client_port}{settings.mcp_client_endpoint}"
+        )
         self._tools: Dict[str, Tool] = {}
         self._active = False
         self._client = httpx.AsyncClient(timeout=self.TIMEOUT)
@@ -43,19 +46,21 @@ class MCPClient:
             response.raise_for_status()
             tools_payload = response.json()
 
-            tools_list = tools_payload if isinstance(tools_payload, list) else tools_payload.get("tools", [])
-            
+            tools_list = (
+                tools_payload if isinstance(tools_payload, list) else tools_payload.get("tools", [])
+            )
+
             self._tools = {}
             for tool_data in tools_list:
                 try:
                     self._tools[tool_data["name"]] = Tool(
                         name=tool_data["name"],
                         description=tool_data["description"],
-                        parameters=tool_data["parameters"]
+                        parameters=tool_data["parameters"],
                     )
                 except Exception as e:
                     logger.warning(f"Failed to parse tool {tool_data}: {e}")
-            
+
             self._active = True
             logger.info(f"MCPClient active with {len(self._tools)} tools")
             return True
