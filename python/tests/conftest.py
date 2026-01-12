@@ -45,8 +45,16 @@ class AgentServer:
 
         try:
             self.process = subprocess.Popen(
-                ["python", "-m", "uvicorn", "server.server:app",
-                 "--host", "0.0.0.0", "--port", str(self.port)],
+                [
+                    "python",
+                    "-m",
+                    "uvicorn",
+                    "server.server:app",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    str(self.port),
+                ],
                 cwd=str(repo_root),
                 env=env,
                 stdout=subprocess.PIPE,
@@ -205,6 +213,7 @@ def multi_agent_cluster():
     yield cluster
     cluster.stop()
 
+
 class MCPServer:
     """Manages test-mcp-echo-server subprocess."""
 
@@ -328,7 +337,7 @@ def agent_server(mcp_server):
                 "MCP_SERVERS": "echo_server",
                 "MCP_SERVER_ECHO_SERVER_URL": mcp_server.url,
                 "AGENT_LOG_LEVEL": "INFO",
-            }
+            },
         )
 
         if not server.start():
@@ -357,7 +366,7 @@ def agent_server_no_mcp():
                 "MODEL_API_URL": os.getenv("MODEL_API_URL", "http://localhost:11434/v1"),
                 "MODEL_NAME": os.getenv("MODEL_NAME", "smollm2:135m"),
                 "AGENT_LOG_LEVEL": "INFO",
-            }
+            },
         )
 
         if not server.start():

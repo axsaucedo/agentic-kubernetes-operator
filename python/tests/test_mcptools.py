@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 def run_mcp_server(port: int, tools_string: str):
     """Run MCP server in subprocess."""
     settings = MCPServerSettings(
-        mcp_port=port,
-        mcp_tools_string=tools_string,
-        mcp_log_level="WARNING"
+        mcp_port=port, mcp_tools_string=tools_string, mcp_log_level="WARNING"
     )
     server = MCPServer(settings)
     server.run(transport="sse")
@@ -53,10 +51,10 @@ def format_dict(data: dict) -> str:
     """Format a dictionary as string."""
     return str(data)
 '''
-    
+
     process = Process(target=run_mcp_server, args=(port, tools_string))
     process.start()
-    
+
     # Wait for server to be ready
     for _ in range(30):
         try:
@@ -66,16 +64,16 @@ def format_dict(data: dict) -> str:
         except Exception:
             pass
         time.sleep(0.5)
-    
+
     yield {"url": f"http://localhost:{port}", "port": port}
-    
+
     process.terminate()
     process.join(timeout=5)
 
 
 class TestMCPServerCreation:
     """Tests for MCP server creation and tool registry."""
-    
+
     def test_server_creation_and_tools_registry(self):
         """Test MCPServer can be created with tools from string and programmatically."""
         # Test tools from string
@@ -90,37 +88,37 @@ def greet(name: str) -> str:
 '''
         settings = MCPServerSettings(mcp_port=9001, mcp_tools_string=tools_string)
         server = MCPServer(settings)
-        
+
         # Verify tools are registered
         assert "square" in server.tools_registry
         assert "greet" in server.tools_registry
         assert server.tools_registry["square"](5) == 25
         assert server.tools_registry["greet"]("World") == "Hello, World!"
-        
+
         # Test programmatic registration
         def custom_tool(x: int) -> int:
             """Custom tool."""
             return x * 10
-        
+
         server.register_tools({"custom_tool": custom_tool})
         assert "custom_tool" in server.tools_registry
         assert server.tools_registry["custom_tool"](5) == 50
-        
+
         # Test get_registered_tools
         tools = server.get_registered_tools()
         assert "square" in tools
         assert "greet" in tools
         assert "custom_tool" in tools
-        
+
         logger.info("✓ Server creation and tools registry works correctly")
-    
+
     def test_tools_string_edge_cases(self):
         """Test various edge cases for tools string parsing."""
         # Empty string
         settings = MCPServerSettings(mcp_port=9002, mcp_tools_string="")
         server = MCPServer(settings)
         assert len(server.tools_registry) == 0
-        
+
         # Multiple tools
         tools_string = '''
 def t1() -> str:
@@ -138,14 +136,14 @@ def t3() -> str:
         settings2 = MCPServerSettings(mcp_port=9003, mcp_tools_string=tools_string)
         server2 = MCPServer(settings2)
         assert len(server2.tools_registry) == 3
-        
+
         # Invalid syntax raises error
         with pytest.raises(SyntaxError):
             MCPServerSettings(mcp_port=9004, mcp_tools_string="def invalid syntax")
             MCPServer(MCPServerSettings(mcp_port=9004, mcp_tools_string="def invalid syntax"))
-        
+
         logger.info("✓ Tools string edge cases handled correctly")
-    
+
     def test_tools_with_various_types(self):
         """Test tools with different type annotations work correctly."""
         tools_string = '''
@@ -167,29 +165,29 @@ def dict_tool(data: dict) -> str:
 '''
         settings = MCPServerSettings(mcp_port=9005, mcp_tools_string=tools_string)
         server = MCPServer(settings)
-        
+
         assert server.tools_registry["string_tool"]("hello") == "HELLO"
         assert server.tools_registry["int_tool"](5) == 10
         assert server.tools_registry["list_tool"]([1, 2, 3]) == 3
         assert "test" in server.tools_registry["dict_tool"]({"test": 1})
-        
+
         logger.info("✓ Tools with various types work correctly")
 
 
 class TestMCPServerEndpoints:
     """Tests for MCP server HTTP endpoints."""
-    
+
     def test_server_health_and_ready_endpoints(self, mcp_server_process):
         """Test /health and /ready endpoints work correctly."""
         url = mcp_server_process["url"]
-        
+
         # Health endpoint
         health_resp = httpx.get(f"{url}/health")
         assert health_resp.status_code == 200
         health_data = health_resp.json()
         assert health_data["status"] == "healthy"
         assert health_data["tools"] >= 4  # echo, add, process_list, format_dict
-        
+
         # Ready endpoint
         ready_resp = httpx.get(f"{url}/ready")
         assert ready_resp.status_code == 200
@@ -197,31 +195,24 @@ class TestMCPServerEndpoints:
         assert ready_data["status"] == "ready"
         assert "echo" in ready_data["tools"]
         assert "add" in ready_data["tools"]
-        
+
         logger.info("✓ Health and ready endpoints work correctly")
 
 
 class TestMCPClient:
     """Tests for MCP client functionality."""
-    
+
     def test_client_creation_and_tool_model(self):
         """Test MCPClient creation and Tool model."""
-        settings = MCPClientSettings(
-            mcp_client_host="http://localhost",
-            mcp_client_port="8002"
-        )
+        settings = MCPClientSettings(mcp_client_host="http://localhost", mcp_client_port="8002")
         client = MCPClient(settings)
-        
+
         assert client is not None
         assert "localhost" in client._url
-        
+
         # Test Tool model
-        tool = Tool(
-            name="test_tool",
-            description="A test tool",
-            parameters={"param1": "string"}
-        )
+        tool = Tool(name="test_tool", description="A test tool", parameters={"param1": "string"})
         assert tool.name == "test_tool"
         assert tool.description == "A test tool"
-        
+
         logger.info("✓ Client creation and Tool model work correctly")
