@@ -68,16 +68,20 @@ async def test_agent_health_discovery_and_invocation(test_namespace: str):
         assert "capabilities" in card
         assert "message_processing" in card["capabilities"]
 
-        # 4. Invoke agent
+        # 4. Chat completions (OpenAI-compatible)
         response = await client.post(
-            f"{agent_base}/agent/invoke",
-            json={"task": "Say hello briefly"},
+            f"{agent_base}/v1/chat/completions",
+            json={
+                "model": agent_name,
+                "messages": [{"role": "user", "content": "Say hello briefly"}],
+                "stream": False,
+            },
         )
         assert response.status_code == 200
         result = response.json()
-        assert "response" in result
-        assert result["status"] == "completed"
-        assert len(result["response"]) > 0
+        assert result["object"] == "chat.completion"
+        assert len(result["choices"]) > 0
+        assert len(result["choices"][0]["message"]["content"]) > 0
 
         # 5. Verify memory events
         response = await client.get(f"{agent_base}/memory/events")
