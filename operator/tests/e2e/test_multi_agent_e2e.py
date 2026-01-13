@@ -260,18 +260,26 @@ async def test_multi_agent_process_independently(test_namespace: str, shared_mod
         # Send unique tasks
         task1_id = f"W1_TASK_{int(time.time())}"
         task2_id = f"W2_TASK_{int(time.time())}"
-        
-        # Invoke worker-1
+
+        # Chat completions for worker-1
         response = await client.post(
-            f"{w1_url}/agent/invoke",
-            json={"task": f"Process task {task1_id}"}
+            f"{w1_url}/v1/chat/completions",
+            json={
+                "model": "worker-1",
+                "messages": [{"role": "user", "content": f"Process task {task1_id}"}],
+                "stream": False,
+            },
         )
         assert response.status_code == 200
-        
-        # Invoke worker-2
+
+        # Chat completions for worker-2
         response = await client.post(
-            f"{w2_url}/agent/invoke",
-            json={"task": f"Process task {task2_id}"}
+            f"{w2_url}/v1/chat/completions",
+            json={
+                "model": "worker-2",
+                "messages": [{"role": "user", "content": f"Process task {task2_id}"}],
+                "stream": False,
+            },
         )
         assert response.status_code == 200
         

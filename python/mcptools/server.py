@@ -41,7 +41,9 @@ class MCPServer:
         if settings.mcp_tools_string:
             self.register_tools_from_string(settings.mcp_tools_string)
 
-        logger.info(f"MCPServer initialized on port {self._port} with {len(self.tools_registry)} tools")
+        logger.info(
+            f"MCPServer initialized on port {self._port} with {len(self.tools_registry)} tools"
+        )
 
     def register_tools(self, tools: Dict[str, Callable]):
         """Register multiple tools with the MCP server.
@@ -50,7 +52,7 @@ class MCPServer:
             tools: Dictionary mapping tool names to callable functions
         """
         for name, func in tools.items():
-            if not name or not name.replace('_', '').replace('-', '').isalnum():
+            if not name or not name.replace("_", "").replace("-", "").isalnum():
                 raise ValueError(f"Tool name '{name}' contains invalid characters")
 
             try:
@@ -74,7 +76,6 @@ class MCPServer:
         tools = {name: obj for name, obj in namespace.items() if isinstance(obj, FunctionType)}
         self.register_tools(tools)
 
-
     def get_registered_tools(self) -> List[str]:
         """Get list of registered tool names.
 
@@ -83,33 +84,41 @@ class MCPServer:
         """
         return list(self.tools_registry.keys())
 
-    def create_app(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> StarletteWithLifespan:
+    def create_app(
+        self, transport: Literal["http", "streamable-http", "sse"] = "http"
+    ) -> StarletteWithLifespan:
         """Create FastMCP ASGI app with health probes."""
         mcp_app = self.mcp.http_app(transport=transport)
-        
+
         async def health(request):
-            return JSONResponse({
-                "status": "healthy",
-                "tools": len(self.tools_registry),
-                "timestamp": int(time.time())
-            })
-        
+            return JSONResponse(
+                {
+                    "status": "healthy",
+                    "tools": len(self.tools_registry),
+                    "timestamp": int(time.time()),
+                }
+            )
+
         async def ready(request):
-            return JSONResponse({
-                "status": "ready",
-                "tools": self.get_registered_tools(),
-                "timestamp": int(time.time())
-            })
-        
+            return JSONResponse(
+                {
+                    "status": "ready",
+                    "tools": self.get_registered_tools(),
+                    "timestamp": int(time.time()),
+                }
+            )
+
         # Prepend health routes
         mcp_app.routes.insert(0, Route("/health", health))
         mcp_app.routes.insert(1, Route("/ready", ready))
-        
+
         return mcp_app
 
     def run(self, transport: Literal["http", "streamable-http", "sse"] = "http") -> None:
         """Run the MCP server through the FastMCP run command."""
-        logger.info(f"Starting MCP server on {self._host}:{self._port} with tools: {self.get_registered_tools()}")
+        logger.info(
+            f"Starting MCP server on {self._host}:{self._port} with tools: {self.get_registered_tools()}"
+        )
         app = self.create_app(transport)
         try:
             uvicorn.run(
@@ -117,7 +126,7 @@ class MCPServer:
                 host=self._host,
                 port=self._port,
                 log_level=self._log_level.lower(),
-                access_log=self._access_log
+                access_log=self._access_log,
             )
         except Exception as e:
             logger.error(f"Failed to start MCP server: {e}")
@@ -129,5 +138,3 @@ if __name__ == "__main__":
     settings = MCPServerSettings()
     server = MCPServer(settings)
     server.run()
-
-
