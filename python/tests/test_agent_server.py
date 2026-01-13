@@ -180,14 +180,21 @@ class TestSingleAgentServer:
         assert "message_processing" in card["capabilities"]
         assert "skills" in card
 
-        # 3. Invoke agent
+        # 3. Chat completions (OpenAI-compatible)
         invoke_resp = httpx.post(
-            f"{url}/agent/invoke", json={"task": "Say hello briefly"}, timeout=60.0
+            f"{url}/v1/chat/completions",
+            json={
+                "model": "test-agent",
+                "messages": [{"role": "user", "content": "Say hello briefly"}],
+                "stream": False,
+            },
+            timeout=60.0,
         )
         assert invoke_resp.status_code == 200
         invoke_data = invoke_resp.json()
-        assert invoke_data["status"] == "completed"
-        assert len(invoke_data["response"]) > 0
+        assert invoke_data["object"] == "chat.completion"
+        assert len(invoke_data["choices"]) > 0
+        assert len(invoke_data["choices"][0]["message"]["content"]) > 0
 
         # 4. Verify memory events
         memory = httpx.get(f"{url}/memory/events").json()
@@ -316,12 +323,16 @@ class TestMultiAgentCluster:
             task_id = f"TASK_{name}_{int(time.time())}"
 
             resp = httpx.post(
-                f"{url}/agent/invoke",
-                json={"task": f"Process task {task_id}. Be brief."},
+                f"{url}/v1/chat/completions",
+                json={
+                    "model": name,
+                    "messages": [{"role": "user", "content": f"Process task {task_id}. Be brief."}],
+                    "stream": False,
+                },
                 timeout=60.0,
             )
             assert resp.status_code == 200
-            assert resp.json()["status"] == "completed"
+            assert resp.json()["object"] == "chat.completion"
 
             # Verify memory
             memory = httpx.get(f"{url}/memory/events").json()
@@ -380,18 +391,26 @@ class TestMultiAgentCluster:
         task1_id = f"W1_{int(time.time())}"
         task2_id = f"W2_{int(time.time())}"
 
-        # Direct invocation to worker-1
+        # Chat completions to worker-1
         resp1 = httpx.post(
-            f"{w1_url}/agent/invoke",
-            json={"task": f"Process task {task1_id}. Be brief."},
+            f"{w1_url}/v1/chat/completions",
+            json={
+                "model": "worker-1",
+                "messages": [{"role": "user", "content": f"Process task {task1_id}. Be brief."}],
+                "stream": False,
+            },
             timeout=60.0,
         )
         assert resp1.status_code == 200
 
-        # Direct invocation to worker-2
+        # Chat completions to worker-2
         resp2 = httpx.post(
-            f"{w2_url}/agent/invoke",
-            json={"task": f"Process task {task2_id}. Be brief."},
+            f"{w2_url}/v1/chat/completions",
+            json={
+                "model": "worker-2",
+                "messages": [{"role": "user", "content": f"Process task {task2_id}. Be brief."}],
+                "stream": False,
+            },
             timeout=60.0,
         )
         assert resp2.status_code == 200

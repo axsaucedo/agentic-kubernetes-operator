@@ -343,7 +343,7 @@ class Agent:
                 content = cast(str, await self.model_api.process_message(messages, stream=False))
 
                 # Check for tool call
-                tool_call = self._parse_tool_call(content)
+                tool_call = self._parse_tool_call(content) 
                 if tool_call:
                     # Log tool call
                     tool_event = self.memory.create_event("tool_call", tool_call)
@@ -380,7 +380,7 @@ class Agent:
                         continue
 
                 # Check for delegation
-                delegation = self._parse_delegation(content)
+                delegation = self._parse_delegation(content) 
                 if delegation:
                     agent_name = delegation.get("agent", "")
                     task = delegation.get("task", "")

@@ -15,28 +15,6 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-def get_mock_responses() -> Optional[List[str]]:
-    """Get mock responses from DEBUG_MOCK_RESPONSES env var.
-
-    Format: JSON array of strings, e.g.:
-    ["first response", "second response"]
-
-    Supports multiline responses in the JSON array.
-    """
-    mock_env = os.environ.get("DEBUG_MOCK_RESPONSES")
-    if not mock_env:
-        return None
-    try:
-        responses = json.loads(mock_env)
-        if isinstance(responses, list):
-            return responses
-        # Single string - wrap in list
-        return [responses]
-    except json.JSONDecodeError:
-        # Treat as single plain text response
-        return [mock_env]
-
-
 class ModelAPI:
     """ModelAPI client for OpenAI-compatible servers.
 
@@ -58,9 +36,18 @@ class ModelAPI:
             api_key: Optional API key for authentication
         """
         self.model = model
-        self.api_base = api_base.rstrip("/")  # Clean trailing slash
+        self.api_base = api_base.rstrip("/")
         self.api_key = api_key
-        self._mock_responses = get_mock_responses()
+
+        # Load mock responses from env var if present
+        self._mock_responses: Optional[List[str]] = None
+        mock_env = os.environ.get("DEBUG_MOCK_RESPONSES")
+        if mock_env:
+            try:
+                responses = json.loads(mock_env)
+                self._mock_responses = responses if isinstance(responses, list) else [responses]
+            except json.JSONDecodeError:
+                self._mock_responses = [mock_env]
 
         # Build headers
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -70,18 +57,12 @@ class ModelAPI:
         self.client = httpx.AsyncClient(
             base_url=self.api_base,
             headers=headers,
-            timeout=60.0,  # Longer timeout for LLM responses
+            timeout=60.0,
         )
 
         logger.info(f"ModelAPI initialized: model={self.model}, api_base={self.api_base}")
         if self._mock_responses:
             logger.info(f"ModelAPI using mock responses ({len(self._mock_responses)} configured)")
-
-    def _pop_mock_response(self) -> Optional[str]:
-        """Pop and return the next mock response, or None if no mocks available."""
-        if self._mock_responses:
-            return self._mock_responses.pop(0)
-        return None
 
     async def process_message(
         self,
@@ -98,22 +79,22 @@ class ModelAPI:
             str if stream=False, AsyncIterator[str] if stream=True
         """
         # Check for mock response
-        mock_content = self._pop_mock_response()
-        if mock_content is not None:
+        if self._mock_responses:
+            mock_content = self._mock_responses.pop(0)
             logger.debug(f"Using mock response: {mock_content[:50]}...")
             if stream:
-                return self._yield_mock_response(mock_content)
+
+                async def yield_mock():
+                    for word in mock_content.split():
+                        yield word + " "
+
+                return yield_mock()
             return mock_content
 
         # Call real API
         if stream:
             return self._stream_response(messages)
         return await self._complete_response(messages)
-
-    async def _yield_mock_response(self, content: str) -> AsyncIterator[str]:
-        """Yield mock response as streaming chunks."""
-        for word in content.split():
-            yield word + " "
 
     async def _complete_response(self, messages: List[Dict[str, str]]) -> str:
         """Non-streaming completion - returns content string."""
@@ -150,33 +131,25 @@ class ModelAPI:
                 response.raise_for_status()
 
                 async for line in response.aiter_lines():
-                    content = self._parse_sse_line(line)
-                    if content is not None:
-                        yield content
+                    # Parse SSE line inline
+                    line = line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]" or not data_str.strip():
+                        continue
+                    try:
+                        data = json.loads(data_str)
+                        if "choices" in data and data["choices"]:
+                            delta = data["choices"][0].get("delta", {})
+                            if "content" in delta:
+                                yield delta["content"]
+                    except json.JSONDecodeError:
+                        pass
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error in streaming: {e}")
             raise
-
-    def _parse_sse_line(self, line: str) -> Optional[str]:
-        """Parse a single SSE line and extract content."""
-        line = line.strip()
-        if not line or not line.startswith("data: "):
-            return None
-
-        data_str = line[6:]
-        if data_str == "[DONE]" or not data_str.strip():
-            return None
-
-        try:
-            data = json.loads(data_str)
-            if "choices" in data and data["choices"]:
-                delta = data["choices"][0].get("delta", {})
-                if "content" in delta:
-                    return delta["content"]
-        except json.JSONDecodeError:
-            pass
-        return None
 
     async def close(self):
         """Close HTTP client and cleanup resources."""
