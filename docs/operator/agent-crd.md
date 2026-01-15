@@ -5,7 +5,7 @@ The Agent custom resource defines an AI agent deployment on Kubernetes.
 ## Full Specification
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: my-agent
@@ -260,7 +260,7 @@ spec:
 ### Simple Agent
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: simple-agent
@@ -274,7 +274,7 @@ spec:
 ### Agent with Tools
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: tool-agent
@@ -294,7 +294,7 @@ spec:
 ### Coordinator with Workers
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: coordinator
@@ -316,7 +316,7 @@ spec:
 ### Agent with Resource Limits
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: resource-agent
@@ -339,7 +339,7 @@ spec:
 ### Agent without Waiting for Dependencies
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: eager-agent

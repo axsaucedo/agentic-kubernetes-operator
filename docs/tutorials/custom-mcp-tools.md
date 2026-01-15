@@ -130,7 +130,7 @@ toolsString: |
 Pass secrets via environment variables:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: api-tools

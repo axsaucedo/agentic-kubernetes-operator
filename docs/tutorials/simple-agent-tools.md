@@ -20,7 +20,7 @@ metadata:
 
 ---
 # ModelAPI: LLM backend
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama
@@ -32,7 +32,7 @@ spec:
 
 ---
 # MCPServer: Calculator tools
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: calculator
@@ -61,7 +61,7 @@ spec:
 
 ---
 # MCPServer: String utilities
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: string-tools
@@ -88,7 +88,7 @@ spec:
 
 ---
 # Agent with tool access
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: tool-agent

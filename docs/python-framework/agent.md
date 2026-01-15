@@ -15,7 +15,7 @@ class Agent:
         memory: LocalMemory = None,
         mcp_clients: List[MCPClient] = None,
         sub_agents: List[RemoteAgent] = None,
-        loop_config: AgenticLoopConfig = None
+        loop_config: max_steps = None
     )
 ```
 
@@ -30,15 +30,15 @@ class Agent:
 | `memory` | LocalMemory | No | New instance | Session/event storage |
 | `mcp_clients` | List[MCPClient] | No | [] | Tool clients for MCP servers |
 | `sub_agents` | List[RemoteAgent] | No | [] | Remote agents for delegation |
-| `loop_config` | AgenticLoopConfig | No | Default config | Agentic loop settings |
+| `loop_config` | max_steps | No | Default config | Agentic loop settings |
 
-## AgenticLoopConfig
+## max_steps
 
 Controls the reasoning loop behavior:
 
 ```python
 @dataclass
-class AgenticLoopConfig:
+class max_steps:
     max_steps: int = 5           # Maximum reasoning iterations
     enable_tools: bool = True    # Enable tool calling
     enable_delegation: bool = True  # Enable agent delegation
@@ -170,17 +170,17 @@ coordinator = Agent(
 ### Custom Loop Configuration
 
 ```python
-from agent.client import AgenticLoopConfig
+from agent.client import max_steps
 
 # High-complexity tasks with more steps
-complex_config = AgenticLoopConfig(
+complex_config = max_steps(
     max_steps=10,
     enable_tools=True,
     enable_delegation=True
 )
 
 # Simple tasks without tools
-simple_config = AgenticLoopConfig(
+simple_config = max_steps(
     max_steps=2,
     enable_tools=False,
     enable_delegation=False

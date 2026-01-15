@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Agentic Kubernetes Operator provides a declarative way to deploy AI agents that can:
+The KAOS provides a declarative way to deploy AI agents that can:
 - Process natural language messages using LLMs
 - Call external tools via the Model Context Protocol (MCP)
 - Delegate tasks to other agents (Agent-to-Agent / A2A)
@@ -15,7 +15,7 @@ The Agentic Kubernetes Operator provides a declarative way to deploy AI agents t
 │                     Kubernetes Cluster                          │
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │                 agentic-system namespace                  │   │
+│  │                 kaos-system namespace                  │   │
 │  │  ┌─────────────────────────────────────────────────┐    │   │
 │  │  │        Agentic Operator Controller              │    │   │
 │  │  │  - AgentReconciler                              │    │   │
@@ -51,7 +51,7 @@ The Agent CRD defines an AI agent deployment. Each Agent:
 - Can delegate to other Agents via A2A protocol
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: my-agent

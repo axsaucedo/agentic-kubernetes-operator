@@ -1,6 +1,6 @@
 # Environment Variables Reference
 
-Complete reference for all environment variables used by the Agentic Kubernetes Operator.
+Complete reference for all environment variables used by the KAOS.
 
 ## Agent Container Environment Variables
 

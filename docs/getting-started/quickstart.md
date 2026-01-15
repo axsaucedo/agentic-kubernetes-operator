@@ -12,8 +12,8 @@ Deploy your first AI agent on Kubernetes in under 5 minutes.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/agentic-kubernetes-operator.git
-cd agentic-kubernetes-operator
+git clone https://github.com/your-org/kaos.git
+cd kaos
 
 # Install CRDs and deploy operator
 cd operator
@@ -23,7 +23,7 @@ make deploy
 Verify the operator is running:
 
 ```bash
-kubectl get pods -n agentic-system
+kubectl get pods -n kaos-system
 # Expected: agentic-operator-controller-manager-xxx  Running
 ```
 
@@ -38,7 +38,7 @@ metadata:
   name: my-agents
 
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama
@@ -49,7 +49,7 @@ spec:
     model: "smollm2:135m"
 
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: my-agent
@@ -77,10 +77,10 @@ kubectl get agent,modelapi -n my-agents -w
 
 # Expected output after ~60s:
 # NAME                           MODELAPI   READY   PHASE
-# agent.ethical.institute/my-agent   ollama     true    Ready
+# agent.kaos.dev/my-agent   ollama     true    Ready
 # 
 # NAME                               MODE     READY   PHASE
-# modelapi.ethical.institute/ollama   Hosted   true    Ready
+# modelapi.kaos.dev/ollama   Hosted   true    Ready
 ```
 
 ## Step 4: Interact with the Agent
@@ -108,7 +108,7 @@ Extend your agent with tools by adding an MCPServer:
 
 ```yaml
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: echo-tools
@@ -120,7 +120,7 @@ spec:
 
 ---
 # Update Agent to reference the MCP server
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: my-agent

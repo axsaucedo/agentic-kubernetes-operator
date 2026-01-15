@@ -21,14 +21,14 @@ Helm provides the most flexible installation with configurable values:
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/agentic-kubernetes-operator.git
-cd agentic-kubernetes-operator/operator
+git clone https://github.com/your-org/kaos.git
+cd kaos/operator
 
 # Install with default values
-helm install agentic-operator chart/ -n agentic-system --create-namespace
+helm install agentic-operator chart/ -n kaos-system --create-namespace
 
 # Or customize installation
-helm install agentic-operator chart/ -n agentic-system --create-namespace \
+helm install agentic-operator chart/ -n kaos-system --create-namespace \
   --set controllerManager.manager.image.repository=your-registry/agentic-operator \
   --set controllerManager.manager.image.tag=v1.0.0 \
   --set controllerManager.replicas=2
@@ -44,8 +44,8 @@ Key configurable values in `chart/values.yaml`:
 | `controllerManager.manager.image.tag` | Operator image tag | `latest` |
 | `controllerManager.replicas` | Number of operator replicas | `1` |
 | `controllerManager.manager.resources` | Resource limits/requests | See values.yaml |
-| `defaultImages.agentRuntime` | Default agent container image | `agentic-agent:latest` |
-| `defaultImages.mcpServer` | Default MCP server image | `agentic-agent:latest` |
+| `defaultImages.agentRuntime` | Default agent container image | `kaos-agent:latest` |
+| `defaultImages.mcpServer` | Default MCP server image | `kaos-agent:latest` |
 | `defaultImages.litellm` | Default LiteLLM proxy image | `ghcr.io/berriai/litellm:main-latest` |
 | `defaultImages.ollama` | Default Ollama image | `alpine/ollama:latest` |
 | `gateway.defaultTimeouts.agent` | Default timeout for Agent HTTPRoutes | `120s` |
@@ -69,8 +69,8 @@ make helm
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/agentic-kubernetes-operator.git
-cd agentic-kubernetes-operator/operator
+git clone https://github.com/your-org/kaos.git
+cd kaos/operator
 
 # Deploy CRDs and operator
 make deploy
@@ -106,15 +106,15 @@ kubectl apply -f operator/config/manager/
 
 ```bash
 # Check operator pod
-kubectl get pods -n agentic-system
+kubectl get pods -n kaos-system
 # Expected: agentic-operator-controller-manager-xxx Running
 
 # Check CRDs are installed
-kubectl get crds | grep ethical.institute
+kubectl get crds | grep kaos.dev
 # Expected:
-# agents.ethical.institute
-# mcpservers.ethical.institute
-# modelapis.ethical.institute
+# agents.kaos.dev
+# mcpservers.kaos.dev
+# modelapis.kaos.dev
 ```
 
 ## Agent Container Image
@@ -125,7 +125,7 @@ The agent container image must be available in your cluster:
 
 ```bash
 cd python
-docker build -t agentic-agent:latest .
+docker build -t kaos-agent:latest .
 ```
 
 ### For Docker Desktop Kubernetes
@@ -137,8 +137,8 @@ Images built locally are automatically available.
 Push to your container registry:
 
 ```bash
-docker tag agentic-agent:latest your-registry/agentic-agent:latest
-docker push your-registry/agentic-agent:latest
+docker tag kaos-agent:latest your-registry/kaos-agent:latest
+docker push your-registry/kaos-agent:latest
 ```
 
 Then update agent deployments to use your registry.
@@ -163,7 +163,7 @@ ollama pull smollm2:135m
 Use ModelAPI with Proxy mode to connect:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama-proxy
@@ -179,7 +179,7 @@ spec:
 Use ModelAPI with Hosted mode to run Ollama in the cluster:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama-hosted
@@ -200,10 +200,10 @@ Note: Hosted mode pulls the model on first start, which can take several minutes
 kubectl delete agents,mcpservers,modelapis --all-namespaces --all
 
 # Uninstall Helm release
-helm uninstall agentic-operator -n agentic-system
+helm uninstall agentic-operator -n kaos-system
 
 # Delete namespace (optional)
-kubectl delete namespace agentic-system
+kubectl delete namespace kaos-system
 ```
 
 ### Kustomize Installation
@@ -224,7 +224,7 @@ make undeploy
 Check RBAC permissions:
 
 ```bash
-kubectl logs -n agentic-system deployment/agentic-operator-controller-manager
+kubectl logs -n kaos-system deployment/agentic-operator-controller-manager
 ```
 
 Common issue: Missing leases permission for leader election.

@@ -1,4 +1,4 @@
-# Contributing to Agentic Kubernetes Operator
+# Contributing to KAOS
 
 Thank you for your interest in contributing! This document provides guidelines and instructions for contributing.
 
@@ -17,8 +17,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-org/agentic-kubernetes-operator.git
-   cd agentic-kubernetes-operator
+   git clone https://github.com/axsaucedo/kaos.git
+   cd kaos
    ```
 
 2. **Set up Python environment:**
@@ -38,7 +38,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 ## Project Structure
 
 ```
-agentic-kubernetes-operator/
+kaos/
 ├── python/                    # Agent runtime framework
 │   ├── Makefile               # Python build and test targets
 │   └── tests/                 # Python unit tests

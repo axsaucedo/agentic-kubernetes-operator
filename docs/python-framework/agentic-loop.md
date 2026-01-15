@@ -51,7 +51,7 @@ The agentic loop is the reasoning mechanism that enables agents to use tools and
 
 ```python
 @dataclass
-class AgenticLoopConfig:
+class max_steps:
     max_steps: int = 5          # Maximum loop iterations
 ```
 

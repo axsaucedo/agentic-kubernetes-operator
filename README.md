@@ -1,174 +1,227 @@
-# Agentic Kubernetes Operator
+# KAOS: K8s Agent Orchestration System
 
-A Kubernetes operator for deploying and managing AI agents with tool access and multi-agent coordination.
+<p align="center">
+  <img src="docs/assets/kaos-logo.svg" alt="KAOS Logo" width="200"/>
+</p>
 
-## Components
+<p align="center">
+  <strong>Deploy, manage, and orchestrate AI agents on Kubernetes</strong>
+</p>
 
-- **Agent**: AI agent pods with LLM access, MCP tools, and agent-to-agent delegation
-- **ModelAPI**: LiteLLM proxy for LLM backends (Ollama, OpenAI, vLLM, etc.)
-- **MCPServer**: Tool servers using Model Context Protocol
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#documentation">Documentation</a>
+</p>
+
+---
+
+KAOS is a Kubernetes-native framework for deploying and orchestrating AI agents with tool access, multi-agent coordination, and seamless LLM integration.
+
+## Features
+
+- **🤖 Agent CRD** - Deploy AI agents as Kubernetes resources with declarative configuration
+- **🔧 MCP Tools** - Integrate tools using the Model Context Protocol standard
+- **🔗 Multi-Agent Networks** - Build hierarchical agent systems with automatic delegation
+- **🌐 Gateway Integration** - Expose agents via Kubernetes Gateway API with automatic routing
+- **📡 OpenAI-Compatible API** - All agents expose `/v1/chat/completions` endpoints
+- **🔄 Agentic Loop** - Built-in reasoning loop with tool calling and agent delegation
 
 ## Quick Start
 
 ### Prerequisites
 
-- Kubernetes cluster (Docker Desktop, kind, etc.)
+- Kubernetes cluster (Docker Desktop, kind, minikube)
 - kubectl configured
-- Ollama running locally (optional, for local LLM)
+- Helm 3.x
+- (Optional) Ollama for local LLM inference
 
-### Install the Operator
+### Install KAOS Operator
 
 ```bash
-cd operator
-make deploy
+# Add the KAOS Helm repository
+helm repo add kaos https://axsaucedo.github.io/kaos
+
+# Install the operator
+helm install kaos-operator kaos/kaos-operator -n kaos-system --create-namespace
 ```
 
-### Deploy a Simple Agent
+### Deploy Your First Agent
 
 ```yaml
-# simple-agent.yaml
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: my-agents
-
----
-apiVersion: ethical.institute/v1alpha1
+# my-agent.yaml
+apiVersion: kaos.dev/v1alpha1
 kind: ModelAPI
 metadata:
-  name: ollama-proxy
-  namespace: my-agents
+  name: ollama
 spec:
   mode: Proxy
   proxyConfig:
-    # Wildcard mode: only specify apiBase, proxies any model to backend
     apiBase: "http://host.docker.internal:11434"
 
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: echo-tools
-  namespace: my-agents
 spec:
   type: python-runtime
   config:
     mcp: "test-mcp-echo-server"
 
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
-  name: my-agent
-  namespace: my-agents
+  name: assistant
 spec:
-  modelAPI: ollama-proxy
+  modelAPI: ollama
   mcpServers:
-  - echo-tools
+    - echo-tools
   config:
-    description: "My first agent"
-    instructions: "You are a helpful assistant with echo tools."
+    description: "Helpful AI assistant with echo tools"
+    instructions: "You are a helpful assistant. Use the echo tool when asked to repeat something."
     env:
-    # Model name with ollama/ prefix for LiteLLM routing
-    - name: MODEL_NAME
-      value: "ollama/smollm2:135m"
+      - name: MODEL_NAME
+        value: "ollama/llama3.2:latest"
 ```
 
-Apply it:
-
 ```bash
-kubectl apply -f simple-agent.yaml
-```
+kubectl apply -f my-agent.yaml
 
-### Interact with the Agent
+# Port-forward to the agent
+kubectl port-forward svc/assistant 8000:80
 
-Port-forward to the agent:
-
-```bash
-kubectl port-forward -n my-agents svc/my-agent 8000:80
-```
-
-Send a request:
-
-```bash
+# Chat with your agent
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "my-agent",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
+  -d '{"model": "assistant", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
-## Multi-Agent Setup
+## Architecture
 
-Agents can delegate tasks to other agents using the `agentNetwork` field:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     KAOS Operator                                │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │   Agent     │  │  MCPServer  │  │  ModelAPI   │              │
+│  │ Controller  │  │ Controller  │  │ Controller  │              │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘              │
+└─────────┼────────────────┼────────────────┼─────────────────────┘
+          │                │                │
+          ▼                ▼                ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│   Agent Pod     │ │  MCP Server Pod │ │  LiteLLM Proxy  │
+│  ┌───────────┐  │ │  ┌───────────┐  │ │  ┌───────────┐  │
+│  │  Agent    │  │ │  │ MCP Tools │  │ │  │  LiteLLM  │──┼──► LLM Backend
+│  │  Runtime  │──┼─┼─►│  Server   │  │ │  │   Proxy   │  │   (Ollama/OpenAI)
+│  └───────────┘  │ │  └───────────┘  │ │  └───────────┘  │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+```
+
+### Components
+
+| Component | Description |
+|-----------|-------------|
+| **Agent** | AI agent with LLM access, MCP tools, and delegation capabilities |
+| **MCPServer** | Tool server implementing Model Context Protocol |
+| **ModelAPI** | LiteLLM proxy for LLM backend abstraction |
+
+## Multi-Agent Orchestration
+
+KAOS supports building complex multi-agent systems with automatic delegation:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: coordinator
-  namespace: my-agents
 spec:
-  modelAPI: ollama-proxy
+  modelAPI: ollama
   config:
-    description: "Coordinator agent"
-    instructions: "Delegate tasks to worker agents."
+    description: "Coordinator that delegates to specialists"
+    instructions: "Delegate research tasks to researcher, analysis to analyst."
   agentNetwork:
-    expose: true
     access:
-    - worker-1
-    - worker-2
+      - researcher
+      - analyst
 
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
-  name: worker-1
-  namespace: my-agents
+  name: researcher
 spec:
-  modelAPI: ollama-proxy
+  modelAPI: ollama
+  mcpServers:
+    - search-tools
   config:
-    description: "Worker agent 1"
-  agentNetwork:
-    expose: true
+    description: "Research specialist with search capabilities"
+
+---
+apiVersion: kaos.dev/v1alpha1
+kind: Agent
+metadata:
+  name: analyst
+spec:
+  modelAPI: ollama
+  mcpServers:
+    - calculator-tools
+  config:
+    description: "Data analyst with calculation tools"
 ```
 
+## Documentation
+
+📚 **[Full Documentation](https://axsaucedo.github.io/kaos)**
+
+- [Getting Started Guide](https://axsaucedo.github.io/kaos/getting-started/)
+- [Agent CRD Reference](https://axsaucedo.github.io/kaos/operator/agent-crd/)
+- [Multi-Agent Tutorial](https://axsaucedo.github.io/kaos/tutorials/multi-agent/)
+- [Custom MCP Tools](https://axsaucedo.github.io/kaos/tutorials/custom-mcp-tools/)
 
 ## Development
 
-### Run Python Tests
+### Run Tests
 
 ```bash
-cd python
-uv sync
-uv run pytest tests/ -v
+# Python unit tests
+cd python && uv sync && uv run pytest tests/ -v
+
+# Go unit tests
+cd operator && make test
+
+# E2E tests (requires kind)
+cd operator && make kind-e2e
 ```
 
-### Run Operator Locally
+### Local Development
 
 ```bash
-cd operator
-make deploy
-```
+# Install CRDs
+cd operator && make install
 
-### Run E2E Tests
+# Run operator locally
+cd operator && make run
 
-```bash
-cd operator/tests
-uv sync
-uv run pytest e2e/ -v
+# Build agent image
+cd python && docker build -t kaos-agent:latest .
 ```
 
 ## Sample Configurations
 
-See `operator/config/samples/` for example configurations:
+See [`operator/config/samples/`](operator/config/samples/) for example configurations:
 
-1. `1-simple-echo-agent.yaml` - Single agent with echo MCP tool (hosted Ollama in-cluster)
-2. `2-multi-agent-mcp.yaml` - Coordinator with worker agents (hosted Ollama in-cluster)
-3. `3-hierarchical-agents.yaml` - Multi-level agent hierarchy with calculator tools
-4. `4-dev-ollama-proxy-agent.yaml` - Development setup with proxy to host Ollama
+1. **Simple Agent** - Single agent with echo MCP tool
+2. **Multi-Agent** - Coordinator with worker agents
+3. **Hierarchical** - Multi-level agent hierarchy
+4. **Development** - Proxy to host Ollama for local dev
 
-For local development with Ollama running on your host machine, use sample 4 which uses `apiBase: "http://host.docker.internal:11434"` to connect to the host Ollama.
+## Contributing
 
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+Apache 2.0 - See [LICENSE](LICENSE) for details.

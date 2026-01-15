@@ -203,7 +203,7 @@ def safe_divide(a: int, b: int) -> str:
 ### Using PyPI Package
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: echo-server
@@ -216,7 +216,7 @@ spec:
 ### Using Dynamic Tools
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: calc-server

@@ -1,4 +1,4 @@
-# Agentic Kubernetes Operator - Project Documentation
+# KAOS (K8s Agent Orchestration System) - Project Documentation
 
 ## Commit Guidelines
 Use conventional commits with brief, functional descriptions:
@@ -17,7 +17,7 @@ Custom Agent Runtime framework (replacing Google ADK) for Kubernetes-native AI a
 ```
 python/                    # Agent runtime framework
 ├── agent/                 # Agent implementation
-│   ├── client.py          # Agent, RemoteAgent, AgentCard, AgenticLoopConfig classes
+│   ├── client.py          # Agent, RemoteAgent, AgentCard, max_steps parameter classes
 │   ├── server.py          # AgentServer with health/ready probes, A2A endpoints
 │   └── memory.py          # LocalMemory for session/event management
 ├── mcptools/              # MCP (Model Context Protocol) tools
@@ -31,7 +31,7 @@ python/                    # Agent runtime framework
 
 operator/                  # Kubernetes operator (Go/kubebuilder)
 ├── api/v1alpha1/          # CRD type definitions
-│   ├── agent_types.go     # Agent CRD with AgenticLoopConfig
+│   ├── agent_types.go     # Agent CRD with max_steps parameter
 │   ├── mcpserver_types.go # MCPServer CRD
 │   └── modelapi_types.go  # ModelAPI CRD
 ├── controllers/           # Reconcilers
@@ -130,7 +130,7 @@ This is the same setup used in GitHub Actions CI.
 - `RemoteAgent` - Remote agent client with `_init()` for discovery and `process_message()` for delegation
 - `MCPClient` - MCP tool client with `_init()` for tool discovery and `call_tool()` for execution
 - `AgentCard` - A2A discovery card with capabilities and skills
-- `AgenticLoopConfig` - Configuration for agentic reasoning loop (max_steps only)
+- `max_steps parameter` - Configuration for agentic reasoning loop (max_steps only)
 
 ### Graceful Degradation Pattern
 Both `RemoteAgent` and `MCPClient` use the same pattern:
@@ -243,7 +243,7 @@ When an agent delegates to a sub-agent:
 
 ### Agent CRD Example
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: Agent
 metadata:
   name: coordinator
@@ -306,8 +306,8 @@ All operator configuration is managed via the `agentic-operator-config` ConfigMa
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DEFAULT_AGENT_IMAGE` | Default agent container image | `agentic-agent:latest` |
-| `DEFAULT_MCP_SERVER_IMAGE` | Default MCP server image | `agentic-agent:latest` |
+| `DEFAULT_AGENT_IMAGE` | Default agent container image | `kaos-agent:latest` |
+| `DEFAULT_MCP_SERVER_IMAGE` | Default MCP server image | `kaos-agent:latest` |
 | `DEFAULT_LITELLM_IMAGE` | Default LiteLLM proxy image | `ghcr.io/berriai/litellm:main-latest` |
 | `DEFAULT_OLLAMA_IMAGE` | Default Ollama image | `alpine/ollama:latest` |
 | `GATEWAY_API_ENABLED` | Enable Gateway API integration | `false` |
@@ -320,8 +320,8 @@ All operator configuration is managed via the `agentic-operator-config` ConfigMa
 These can be set via Helm values:
 ```yaml
 defaultImages:
-  agentRuntime: "agentic-agent:latest"
-  mcpServer: "agentic-agent:latest"
+  agentRuntime: "kaos-agent:latest"
+  mcpServer: "kaos-agent:latest"
   litellm: "ghcr.io/berriai/litellm:main-latest"
   ollama: "alpine/ollama:latest"
 gateway:
@@ -373,7 +373,7 @@ The ModelAPI controller supports three modes:
 When using `mode: Hosted`, the operator deploys Ollama in-cluster and automatically pulls the specified model:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: ModelAPI
 metadata:
   name: my-ollama
@@ -402,7 +402,7 @@ The ProxyConfig supports multiple configuration patterns:
 
 **Wildcard Mode (Recommended for Development):**
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: ModelAPI
 metadata:
   name: my-proxy
@@ -461,7 +461,7 @@ The operator requires these RBAC permissions in `operator/config/rbac/role.yaml`
 
 ```bash
 # Build agent Docker image
-cd python && docker build -t agentic-agent:latest .
+cd python && docker build -t kaos-agent:latest .
 
 # Build operator
 cd operator && go build -o bin/manager main.go
@@ -473,7 +473,7 @@ cd operator && make generate && make manifests
 cd operator && make helm
 
 # Run operator locally (scale down deployed operator first)
-kubectl scale deployment agentic-operator-controller-manager -n agentic-system --replicas=0
+kubectl scale deployment agentic-operator-controller-manager -n kaos-system --replicas=0
 cd operator && ./bin/manager
 
 # Run Python tests (34 tests)
@@ -492,15 +492,15 @@ The operator includes a Helm chart in `operator/chart/` generated from kustomize
 
 ```bash
 # Install with Helm
-helm install agentic-operator operator/chart/ -n agentic-system --create-namespace
+helm install agentic-operator operator/chart/ -n kaos-system --create-namespace
 
 # Customize installation
-helm install agentic-operator operator/chart/ -n agentic-system --create-namespace \
+helm install agentic-operator operator/chart/ -n kaos-system --create-namespace \
   --set controllerManager.manager.image.tag=v1.0.0 \
   --set controllerManager.replicas=2
 
 # Uninstall
-helm uninstall agentic-operator -n agentic-system
+helm uninstall agentic-operator -n kaos-system
 ```
 
 Key values in `chart/values.yaml`:
@@ -598,7 +598,7 @@ kubectl apply -f operator/config/samples/4-dev-ollama-proxy-agent.yaml
 
 ### MCPServer with Dynamic Tools (tools.fromString)
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.dev/v1alpha1
 kind: MCPServer
 metadata:
   name: calc-mcp

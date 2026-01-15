@@ -14,7 +14,7 @@ The Python agent framework provides the runtime components for AI agents. It rep
 ```
 python/
 ├── agent/
-│   ├── client.py      # Agent, RemoteAgent, AgentCard, AgenticLoopConfig
+│   ├── client.py      # Agent, RemoteAgent, AgentCard, max_steps
 │   ├── server.py      # AgentServer, HTTP endpoints
 │   └── memory.py      # LocalMemory, MemoryEvent, SessionMemory
 ├── mcptools/
@@ -59,7 +59,7 @@ python/
 ### Programmatic Usage
 
 ```python
-from agent.client import Agent, AgenticLoopConfig
+from agent.client import Agent, max_steps
 from agent.server import AgentServer
 from modelapi.client import ModelAPI
 
@@ -74,7 +74,7 @@ agent = Agent(
     name="my-agent",
     model_api=model_api,
     instructions="You are a helpful assistant.",
-    loop_config=AgenticLoopConfig(max_steps=5)
+    loop_config=max_steps(max_steps=5)
 )
 
 # Create and run server
