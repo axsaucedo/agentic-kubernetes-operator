@@ -37,7 +37,7 @@ metadata:
   name: multi-agent-demo
 
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: shared-model
@@ -55,7 +55,7 @@ Each worker has a specific role:
 ```yaml
 ---
 # Worker 1: Research Agent
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: researcher
@@ -74,7 +74,7 @@ spec:
 
 ---
 # Worker 2: Analysis Agent
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: analyst
@@ -93,7 +93,7 @@ spec:
 
 ---
 # Worker 3: Writing Agent
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: writer
@@ -117,7 +117,7 @@ The coordinator can delegate to all workers:
 
 ```yaml
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: coordinator
@@ -165,13 +165,13 @@ kubectl get agent,modelapi -n multi-agent-demo -w
 Expected output:
 ```
 NAME                                      MODELAPI       READY   PHASE
-agent.ethical.institute/analyst           shared-model   true    Ready
-agent.ethical.institute/coordinator       shared-model   true    Ready
-agent.ethical.institute/researcher        shared-model   true    Ready
-agent.ethical.institute/writer            shared-model   true    Ready
+agent.kaos.tools/analyst           shared-model   true    Ready
+agent.kaos.tools/coordinator       shared-model   true    Ready
+agent.kaos.tools/researcher        shared-model   true    Ready
+agent.kaos.tools/writer            shared-model   true    Ready
 
 NAME                                     MODE     READY   PHASE
-modelapi.ethical.institute/shared-model   Hosted   true    Ready
+modelapi.kaos.tools/shared-model   Hosted   true    Ready
 ```
 
 ## Step 5: Test the Coordinator
@@ -245,7 +245,7 @@ Enhance workers with MCP tools:
 
 ```yaml
 ---
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: MCPServer
 metadata:
   name: search-tools
@@ -260,7 +260,7 @@ spec:
 
 ---
 # Update researcher to use tools
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: researcher

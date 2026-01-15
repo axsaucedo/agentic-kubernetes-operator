@@ -1,6 +1,6 @@
-# Agentic Kubernetes Operator Documentation
+# KAOS Documentation
 
-This documentation provides comprehensive coverage of the Agentic Kubernetes Operator, a framework for deploying and managing AI agents with tool access and multi-agent coordination on Kubernetes.
+This documentation provides comprehensive coverage of the KAOS, a framework for deploying and managing AI agents with tool access and multi-agent coordination on Kubernetes.
 
 ## Documentation Structure
 

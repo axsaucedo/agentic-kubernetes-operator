@@ -1,6 +1,6 @@
 # Gateway API Integration
 
-The Agentic Kubernetes Operator supports the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) for exposing Agent, ModelAPI, and MCPServer resources via a unified ingress point.
+KAOS supports the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) for exposing Agent, ModelAPI, and MCPServer resources via a unified ingress point.
 
 ## Overview
 
@@ -65,7 +65,7 @@ When Gateway API is enabled, the operator automatically creates HTTPRoute resour
 
 ```bash
 helm install agentic-operator ./operator/chart \
-  --namespace agentic-system \
+  --namespace kaos-system \
   --create-namespace \
   --set gatewayAPI.enabled=true \
   --set gatewayAPI.createGateway=true \
@@ -112,7 +112,7 @@ These values are passed to the operator via environment variables:
 Override the timeout for a specific resource using `spec.gatewayRoute.timeout`:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: long-running-agent
@@ -130,7 +130,7 @@ To use an existing Gateway instead of creating one:
 
 ```bash
 helm install agentic-operator ./operator/chart \
-  --namespace agentic-system \
+  --namespace kaos-system \
   --create-namespace \
   --set gatewayAPI.enabled=true \
   --set gatewayAPI.gatewayName=my-gateway \
@@ -169,7 +169,7 @@ The backend service receives:
 
 1. Deploy an agent:
    ```yaml
-   apiVersion: ethical.institute/v1alpha1
+   apiVersion: kaos.tools/v1alpha1
    kind: Agent
    metadata:
      name: my-agent
@@ -220,7 +220,7 @@ To run without Gateway API (using direct service access):
 
 ```bash
 helm install agentic-operator ./operator/chart \
-  --namespace agentic-system \
+  --namespace kaos-system \
   --create-namespace
   # gatewayAPI.enabled defaults to false
 ```
@@ -237,12 +237,12 @@ curl http://localhost:8080/health
 
 Check operator logs:
 ```bash
-kubectl logs -n agentic-system deployment/agentic-operator-controller-manager | grep HTTPRoute
+kubectl logs -n kaos-system deployment/agentic-operator-controller-manager | grep HTTPRoute
 ```
 
 Verify Gateway API is enabled:
 ```bash
-kubectl get configmap -n agentic-system agentic-operator-config -o yaml
+kubectl get configmap -n kaos-system agentic-operator-config -o yaml
 ```
 
 ### 404 Errors
@@ -259,7 +259,7 @@ kubectl get configmap -n agentic-system agentic-operator-config -o yaml
 
 3. Verify the Gateway is programmed:
    ```bash
-   kubectl get gateway -n agentic-system
+   kubectl get gateway -n kaos-system
    ```
 
 ### RBAC Errors

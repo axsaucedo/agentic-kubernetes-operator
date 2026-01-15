@@ -5,7 +5,7 @@ The ModelAPI custom resource provides LLM access for agents, either as a proxy t
 ## Full Specification
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: my-modelapi
@@ -296,7 +296,7 @@ spec:
 This is especially useful for LLM inference which can take longer than typical HTTP timeouts:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama-proxy
@@ -322,7 +322,7 @@ spec:
 ### Local Development with Host Ollama
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: dev-ollama
@@ -335,7 +335,7 @@ spec:
 ### In-Cluster Ollama
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: ollama
@@ -354,7 +354,7 @@ spec:
 ### Mock Testing Mode
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: mock-api
@@ -367,7 +367,7 @@ spec:
 ### OpenAI Proxy
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: openai
@@ -387,7 +387,7 @@ spec:
 ### Multi-Model Routing
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: ModelAPI
 metadata:
   name: multi-model

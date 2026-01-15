@@ -5,7 +5,7 @@ The MCPServer custom resource deploys MCP (Model Context Protocol) tool servers 
 ## Full Specification
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: MCPServer
 metadata:
   name: my-mcp
@@ -180,8 +180,8 @@ spec:
 | Tool Source | Image | Command |
 |-------------|-------|---------|
 | `tools.fromPackage` | `python:3.12-slim` | `pip install <package> && <package>` |
-| `tools.fromString` | `agentic-agent:latest` | `python -m mcptools.server` |
-| `tools.fromSecretKeyRef` | `agentic-agent:latest` | `python -m mcptools.server` |
+| `tools.fromString` | `kaos-agent:latest` | `python -m mcptools.server` |
+| `tools.fromSecretKeyRef` | `kaos-agent:latest` | `python -m mcptools.server` |
 
 ## Status Fields
 
@@ -198,7 +198,7 @@ spec:
 ### Echo Tool (PyPI Package)
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: MCPServer
 metadata:
   name: echo-tools
@@ -212,7 +212,7 @@ spec:
 ### Calculator Tool (Dynamic)
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: MCPServer
 metadata:
   name: calculator
@@ -243,7 +243,7 @@ spec:
 ### String Utilities with Resources
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: MCPServer
 metadata:
   name: string-utils
@@ -274,7 +274,7 @@ spec:
 ### External API Tool with Secret
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: MCPServer
 metadata:
   name: weather-api
@@ -311,7 +311,7 @@ spec:
 Reference MCPServer in Agent spec:
 
 ```yaml
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: my-agent

@@ -1,6 +1,6 @@
 # Testing Guide
 
-How to run and write tests for the Agentic Kubernetes Operator.
+How to run and write tests for the KAOS.
 
 ## Test Structure
 
@@ -100,7 +100,7 @@ cd operator/tests
 source .venv/bin/activate
 
 # Ensure operator is running
-kubectl get pods -n agentic-system
+kubectl get pods -n kaos-system
 ```
 
 ### Run Tests
@@ -286,7 +286,7 @@ import time
 
 def create_agent(name, namespace):
     yaml = f"""
-apiVersion: ethical.institute/v1alpha1
+apiVersion: kaos.tools/v1alpha1
 kind: Agent
 metadata:
   name: {name}
@@ -382,7 +382,7 @@ controllerManager:
       tag: v1.0.0
     imagePullPolicy: Always
 defaultImages:
-  agentRuntime: my-registry/agentic-agent:v1.0.0
+  agentRuntime: my-registry/kaos-agent:v1.0.0
   mcpServer: my-registry/agentic-mcp-server:v1.0.0
 EOF
 

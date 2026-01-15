@@ -1,6 +1,6 @@
 # Kubernetes Operator Overview
 
-The Agentic Kubernetes Operator manages the lifecycle of AI agents and their dependencies on Kubernetes.
+KAOS manages the lifecycle of AI agents and their dependencies on Kubernetes.
 
 ## Architecture
 
@@ -17,7 +17,7 @@ The Agentic Kubernetes Operator manages the lifecycle of AI agents and their dep
           ▼                ▼                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │               Agentic Operator Controller Manager                │
-│                    (agentic-system namespace)                    │
+│                    (kaos-system namespace)                    │
 │                                                                  │
 │  ┌────────────────┐ ┌────────────────┐ ┌────────────────┐       │
 │  │AgentReconciler │ │ModelAPIReconciler│ │MCPServerReconciler│  │
@@ -160,7 +160,7 @@ The operator translates CRD fields to container environment variables:
 | Source | Container | Key Environment |
 |--------|-----------|-----------------|
 | `mcp` | python:3.12-slim | Package installed via pip |
-| `toolsString` | agentic-agent | `MCP_TOOLS_STRING` |
+| `toolsString` | kaos-agent | `MCP_TOOLS_STRING` |
 
 ## RBAC Requirements
 
@@ -178,7 +178,7 @@ The operator requires specific permissions:
   verbs: [create, patch]
 
 # For managing resources
-- apiGroups: [ethical.institute]
+- apiGroups: [kaos.tools]
   resources: [agents, modelapis, mcpservers]
   verbs: [get, list, watch, create, update, patch, delete]
 
@@ -219,7 +219,7 @@ For development, run the operator locally:
 ```bash
 # Scale down deployed operator
 kubectl scale deployment agentic-operator-controller-manager \
-  -n agentic-system --replicas=0
+  -n kaos-system --replicas=0
 
 # Run locally
 cd operator
@@ -231,7 +231,7 @@ make run
 Monitor operator logs:
 
 ```bash
-kubectl logs -n agentic-system \
+kubectl logs -n kaos-system \
   deployment/agentic-operator-controller-manager -f
 ```
 
