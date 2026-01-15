@@ -1,12 +1,14 @@
-.PHONY: help build docker-build test clean run
+.PHONY: help build docker-build test lint format clean run
 
-IMG ?= agentic-runtime:latest
+IMG ?= kaos-runtime:latest
 
 help:
 	@echo "Agent Runtime build targets:"
 	@echo "  build               - Install dependencies using UV"
 	@echo "  docker-build        - Build runtime Docker image"
 	@echo "  test                - Run pytest integration tests"
+	@echo "  lint                - Run linting (black check + type check)"
+	@echo "  format              - Format code with black"
 	@echo "  clean               - Clean build artifacts"
 	@echo "  run                 - Run server locally"
 
@@ -21,6 +23,15 @@ docker-build: build
 # Run integration tests
 test:
 	uv run pytest tests/ -v --cov=. --cov-report=html
+
+# Run linting checks (same as CI)
+lint:
+	black --check .
+	uvx ty check
+
+# Format code with black
+format:
+	black .
 
 # Clean artifacts
 clean:

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-Common issues and solutions for the Agentic Kubernetes Operator.
+Common issues and solutions for the KAOS.
 
 ## Agent Issues
 
@@ -49,7 +49,7 @@ kubectl describe pod -l app=my-agent -n my-namespace
    - Verify endpoint is reachable
 
 2. **Image not found**
-   - Ensure `agentic-agent:latest` is available
+   - Ensure `kaos-agent:latest` is available
    - For remote clusters, push to registry
 
 3. **Python errors**
@@ -212,7 +212,7 @@ kubectl exec -it deploy/my-agent -n my-namespace -- \
 
 **Diagnosis:**
 ```bash
-kubectl logs -n agentic-system deployment/agentic-operator-controller-manager
+kubectl logs -n kaos-system deployment/kaos-operator-controller-manager
 ```
 
 **Common Causes:**
@@ -223,7 +223,7 @@ kubectl logs -n agentic-system deployment/agentic-operator-controller-manager
 
 2. **CRDs not installed**
    ```bash
-   kubectl get crds | grep ethical.institute
+   kubectl get crds | grep kaos.tools
    ```
 
 3. **Image not available**
@@ -233,14 +233,14 @@ kubectl logs -n agentic-system deployment/agentic-operator-controller-manager
 
 **Diagnosis:**
 ```bash
-kubectl logs -n agentic-system deployment/agentic-operator-controller-manager -f
+kubectl logs -n kaos-system deployment/kaos-operator-controller-manager -f
 ```
 
 **Common Causes:**
 
 1. **Operator not running**
    ```bash
-   kubectl get pods -n agentic-system
+   kubectl get pods -n kaos-system
    ```
 
 2. **Watch error**

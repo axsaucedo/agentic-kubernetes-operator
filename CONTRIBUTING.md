@@ -1,4 +1,4 @@
-# Contributing to Agentic Kubernetes Operator
+# Contributing to KAOS (K8s Agent Orchestration System)
 
 Thank you for your interest in contributing! This document provides guidelines and instructions for contributing.
 
@@ -17,8 +17,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-org/agentic-kubernetes-operator.git
-   cd agentic-kubernetes-operator
+   git clone https://github.com/your-org/kaos.git
+   cd kaos
    ```
 
 2. **Set up Python environment:**
@@ -38,7 +38,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 ## Project Structure
 
 ```
-agentic-kubernetes-operator/
+kaos/
 ├── python/                    # Agent runtime framework
 │   ├── Makefile               # Python build and test targets
 │   └── tests/                 # Python unit tests
@@ -59,12 +59,22 @@ agentic-kubernetes-operator/
 
 ## Running Tests
 
-### Python Unit Tests
+**IMPORTANT**: CI runs both tests AND linting. Always run both before pushing.
+
+### Python Unit Tests and Linting
 
 ```bash
 cd python
 source .venv/bin/activate
+
+# Run tests (39 tests)
 python -m pytest tests/ -v
+
+# Run linting (required for CI to pass)
+make lint  # Runs: black --check . && uvx ty check
+
+# Format code if black fails
+make format
 ```
 
 ### Go Integration Tests
@@ -153,10 +163,12 @@ act -j go-tests --container-architecture linux/amd64
 
 2. **Make your changes** with clear, atomic commits
 
-3. **Run tests locally** before pushing:
+3. **Run tests and linting locally** before pushing:
    ```bash
-   # Python tests
-   cd python && python -m pytest tests/ -v
+   # Python tests + linting (both required for CI)
+   cd python && source .venv/bin/activate
+   python -m pytest tests/ -v
+   make lint
    
    # Go tests
    cd operator && make test-unit

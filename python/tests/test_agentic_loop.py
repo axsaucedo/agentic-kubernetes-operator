@@ -176,7 +176,7 @@ class TestAgenticLoopDelegation:
 
         # Create mock remote agent
         mock_remote = RemoteAgent(name="worker", card_url="http://localhost:9999")
-        mock_remote.agent_card = type(
+        mock_remote.agent_card = type(  # type: ignore[assignment]
             "AgentCard",
             (),
             {
@@ -295,7 +295,7 @@ class TestMemoryContextLimit:
 
         # Create mock remote agent
         mock_remote = RemoteAgent(name="worker", card_url="http://localhost:9999")
-        mock_remote.agent_card = type(
+        mock_remote.agent_card = type(  # type: ignore[assignment]
             "AgentCard",
             (),
             {"name": "worker", "description": "Worker", "url": "http://localhost:9999"},
@@ -367,7 +367,7 @@ class TestSystemPromptBuilding:
         mock_model = MockModelAPI(responses=["I can delegate."])
 
         mock_remote = RemoteAgent(name="worker", card_url="http://localhost:9999")
-        mock_remote.agent_card = type(
+        mock_remote.agent_card = type(  # type: ignore[assignment]
             "AgentCard",
             (),
             {
@@ -554,7 +554,7 @@ class TestMemoryEventTracking:
         mock_mcp = MockMCPClient(tools={"fetch": ("Fetch URL", {"data": "example"})})
 
         mock_remote = RemoteAgent(name="analyzer", card_url="http://localhost:9999")
-        mock_remote.agent_card = type(
+        mock_remote.agent_card = type(  # type: ignore[assignment]
             "AgentCard",
             (),
             {

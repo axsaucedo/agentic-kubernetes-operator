@@ -1,14 +1,14 @@
 .PHONY: help build docker-build deploy generate manifests test test-unit clean envtest helm kind-create kind-delete kind-e2e e2e-test e2e-test-seq e2e-clean
 
 # Configuration
-IMG ?= agentic-operator:latest
+IMG ?= kaos-operator:latest
 CONTROLLER_GEN ?= $(shell which controller-gen || echo "$(shell pwd)/bin/controller-gen")
 CRD_OPTIONS ?= "crd:generateEmbeddedObjectMeta=true"
 SETUP_ENVTEST ?= $(shell which setup-envtest)
 HELMIFY ?= $(shell which helmify || echo "$(HOME)/go/bin/helmify")
 
 # KIND cluster configuration
-KIND_CLUSTER_NAME ?= agentic-e2e
+KIND_CLUSTER_NAME ?= kaos-e2e
 
 help:
 	@echo "Operator build targets:"
@@ -55,7 +55,7 @@ generate:
 
 # Generate CRD manifests
 manifests:
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=agentic-operator paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=kaos-operator paths="./..." output:crd:artifacts:config=config/crd/bases
 
 # Install envtest binary (one-time setup)
 envtest:
@@ -115,7 +115,7 @@ e2e-test-seq:
 # Clean up E2E test resources
 e2e-clean:
 	@echo "Cleaning up E2E test resources..."
-	-helm uninstall agentic-e2e -n agentic-e2e-system 2>/dev/null || true
-	-kubectl delete namespace agentic-e2e-system --wait=false 2>/dev/null || true
+	-helm uninstall kaos-e2e -n kaos-e2e-system 2>/dev/null || true
+	-kubectl delete namespace kaos-e2e-system --wait=false 2>/dev/null || true
 	-kubectl get ns -o name | grep e2e | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true
 	@sleep 3
