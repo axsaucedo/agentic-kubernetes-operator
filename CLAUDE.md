@@ -61,16 +61,26 @@ operator/                  # Kubernetes operator (Go/kubebuilder)
 - **KEEP IT SIMPLE** - Avoid over-engineering
 - Python commands: `cd python && source .venv/bin/activate && <command>`
 - Operator E2E: `cd operator && make kind-e2e`
-- Tests are the success criteria for development
+- Tests AND linting are the success criteria for development
 - **Documentation**: When making changes, update both `CLAUDE.md` AND `docs/` directory
 
-## Running Tests
+## Running Tests and Linting
 
-### Python Tests
+**IMPORTANT**: CI runs both tests AND linting. Always run both before committing.
+
+### Python Tests and Linting
 ```bash
 cd python
 source .venv/bin/activate
-python -m pytest tests/ -v  # Run all 36 tests
+
+# Run tests (39 tests)
+python -m pytest tests/ -v
+
+# Run linting (required for CI to pass)
+make lint  # Runs: black --check . && uvx ty check
+
+# Format code if black fails
+make format
 ```
 
 ### Go Unit Tests
