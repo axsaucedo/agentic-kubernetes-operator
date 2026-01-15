@@ -15,7 +15,7 @@ OPERATOR_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_ROOT="$(cd "${OPERATOR_ROOT}/.." && pwd)"
 
 # Configuration - single source of truth for versions
-export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-agentic-e2e}"
+export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-kaos-e2e}"
 export REGISTRY="${REGISTRY:-kind-local}"
 export OPERATOR_TAG="${OPERATOR_TAG:-dev}"
 export AGENT_TAG="${AGENT_TAG:-dev}"
@@ -46,10 +46,10 @@ echo "Using Helm values: ${HELM_VALUES_FILE}"
 
 # Install operator with Gateway
 echo "Installing operator with Gateway..."
-kubectl create namespace agentic-e2e-system 2>/dev/null || true
+kubectl create namespace kaos-e2e-system 2>/dev/null || true
 kubectl apply --server-side -f "${OPERATOR_ROOT}/config/crd/bases"
-helm upgrade --install agentic-e2e "${OPERATOR_ROOT}/chart" \
-    --namespace agentic-e2e-system \
+helm upgrade --install kaos-e2e "${OPERATOR_ROOT}/chart" \
+    --namespace kaos-e2e-system \
     -f "${HELM_VALUES_FILE}" \
     --set gatewayAPI.enabled=true \
     --set gatewayAPI.createGateway=true \
@@ -60,7 +60,7 @@ helm upgrade --install agentic-e2e "${OPERATOR_ROOT}/chart" \
 # Wait for Gateway to be programmed
 echo "Waiting for Gateway to be programmed..."
 for i in {1..30}; do
-    STATUS=$(kubectl get gateway agentic-gateway -n agentic-e2e-system -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "")
+    STATUS=$(kubectl get gateway kaos-gateway -n kaos-e2e-system -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "")
     if [ "$STATUS" = "True" ]; then
         echo "Gateway is programmed!"
         break
@@ -70,7 +70,7 @@ for i in {1..30}; do
 done
 
 # Get the Envoy Gateway service for port-forwarding
-GATEWAY_SVC=$(kubectl get svc -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=agentic-gateway" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+GATEWAY_SVC=$(kubectl get svc -n envoy-gateway-system -l "gateway.envoyproxy.io/owning-gateway-name=kaos-gateway" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 if [ -z "$GATEWAY_SVC" ]; then
     echo "ERROR: Could not find Gateway service"
     kubectl get svc -n envoy-gateway-system
@@ -98,8 +98,8 @@ cleanup() {
     kill $PORT_FORWARD_PID 2>/dev/null || true
     
     echo "Uninstalling operator..."
-    helm uninstall agentic-e2e -n agentic-e2e-system 2>/dev/null || true
-    kubectl delete namespace agentic-e2e-system --wait=false 2>/dev/null || true
+    helm uninstall kaos-e2e -n kaos-e2e-system 2>/dev/null || true
+    kubectl delete namespace kaos-e2e-system --wait=false 2>/dev/null || true
     
     # Clean up leftover test namespaces
     kubectl get ns -o name | grep -E "e2e-(gw[0-9]+|main)" | xargs -I{} kubectl delete {} --wait=false 2>/dev/null || true

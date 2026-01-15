@@ -22,13 +22,13 @@ cat > "${VALUES_FILE}" << EOF
 controllerManager:
   manager:
     image:
-      repository: ${REGISTRY}/agentic-operator
+      repository: ${REGISTRY}/kaos-operator
       tag: ${OPERATOR_TAG}
     imagePullPolicy: IfNotPresent
 
 defaultImages:
-  agentRuntime: ${REGISTRY}/agentic-agent:${AGENT_TAG}
-  mcpServer: ${REGISTRY}/agentic-mcp-server:${AGENT_TAG}
+  agentRuntime: ${REGISTRY}/kaos-agent:${AGENT_TAG}
+  mcpServer: ${REGISTRY}/kaos-mcp-server:${AGENT_TAG}
   litellm: ${REGISTRY}/litellm:${LITELLM_VERSION}
   ollama: ${REGISTRY}/ollama:${OLLAMA_TAG}
 EOF

@@ -242,7 +242,7 @@ def shared_modelapi(shared_namespace: str) -> Generator[str, None, None]:
 def create_modelapi_resource(namespace: str, name: str = "mock-proxy") -> Dict[str, Any]:
     """Create a ModelAPI resource spec for LiteLLM proxy (supports mock_response)."""
     return {
-        "apiVersion": "ethical.institute/v1alpha1",
+        "apiVersion": "kaos.tools/v1alpha1",
         "kind": "ModelAPI",
         "metadata": {"name": name, "namespace": namespace},
         "spec": {
@@ -265,7 +265,7 @@ def create_modelapi_hosted_resource(namespace: str, name: str = "ollama-hosted")
     The model is pulled via an init container.
     """
     return {
-        "apiVersion": "ethical.institute/v1alpha1",
+        "apiVersion": "kaos.tools/v1alpha1",
         "kind": "ModelAPI",
         "metadata": {"name": name, "namespace": namespace},
         "spec": {
@@ -287,7 +287,7 @@ def create_modelapi_proxy_ollama_resource(namespace: str, name: str = "ollama-pr
     Only works in Docker Desktop, NOT in KIND/CI.
     """
     return {
-        "apiVersion": "ethical.institute/v1alpha1",
+        "apiVersion": "kaos.tools/v1alpha1",
         "kind": "ModelAPI",
         "metadata": {"name": name, "namespace": namespace},
         "spec": {
@@ -307,7 +307,7 @@ def create_modelapi_proxy_ollama_resource(namespace: str, name: str = "ollama-pr
 def create_mcpserver_resource(namespace: str, name: str = "echo-server") -> Dict[str, Any]:
     """Create an MCPServer resource for test-mcp-echo-server."""
     return {
-        "apiVersion": "ethical.institute/v1alpha1",
+        "apiVersion": "kaos.tools/v1alpha1",
         "kind": "MCPServer",
         "metadata": {"name": name, "namespace": namespace},
         "spec": {
@@ -344,7 +344,7 @@ def create_agent_resource(namespace: str, modelapi_name: str, mcpserver_names: l
         config["reasoningLoopMaxSteps"] = reasoning_loop_max_steps
     
     return {
-        "apiVersion": "ethical.institute/v1alpha1",
+        "apiVersion": "kaos.tools/v1alpha1",
         "kind": "Agent",
         "metadata": {"name": agent_name, "namespace": namespace},
         "spec": {

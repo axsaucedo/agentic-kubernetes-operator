@@ -4,7 +4,7 @@
 set -o errexit
 
 # Configuration
-CLUSTER_NAME="${KIND_CLUSTER_NAME:-agentic-e2e}"
+CLUSTER_NAME="${KIND_CLUSTER_NAME:-kaos-e2e}"
 REG_NAME="${REGISTRY_NAME:-kind-registry}"
 REG_PORT="${REGISTRY_PORT:-5001}"
 
