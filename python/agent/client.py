@@ -196,7 +196,9 @@ class Agent:
             if not mcp_client._active:
                 await mcp_client._init()
             for tool in mcp_client.get_tools():
-                params_str = json.dumps(tool.parameters, indent=2) if tool.parameters else "{}"
+                # Use input_schema (MCP standard) for parameter description
+                schema = tool.input_schema if tool.input_schema else {}
+                params_str = json.dumps(schema, indent=2) if schema else "{}"
                 tools_desc.append(
                     f"- **{tool.name}**: {tool.description}\n  Parameters: {params_str}"
                 )
@@ -499,16 +501,19 @@ class Agent:
                 )
             return f"[Delegation failed: {error_msg}]"
 
-    def get_agent_card(self, base_url: str) -> AgentCard:
+    async def get_agent_card(self, base_url: str) -> AgentCard:
         """Generate agent card for A2A discovery."""
         skills = []
         for mcp_client in self.mcp_clients:
+            # Ensure MCP client is initialized to discover tools
+            if not mcp_client._active:
+                await mcp_client._init()
             for tool in mcp_client.get_tools():
                 skills.append(
                     {
                         "name": tool.name,
                         "description": tool.description,
-                        "parameters": tool.parameters,
+                        "inputSchema": tool.input_schema,
                     }
                 )
 

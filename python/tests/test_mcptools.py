@@ -5,10 +5,9 @@ Tests MCPServer and MCPClient functionality including:
 - Server creation with tools from string
 - Health/ready endpoints
 - Tool registry management
-- Various type annotations
+- MCP protocol communication via Streamable HTTP
 """
 
-import os
 import pytest
 import httpx
 import time
@@ -16,18 +15,18 @@ import logging
 from multiprocessing import Process
 
 from mcptools.server import MCPServer, MCPServerSettings
-from mcptools.client import MCPClient, MCPClientSettings, Tool
+from mcptools.client import MCPClient, Tool
 
 logger = logging.getLogger(__name__)
 
 
 def run_mcp_server(port: int, tools_string: str):
-    """Run MCP server in subprocess."""
+    """Run MCP server in subprocess with streamable-http transport."""
     settings = MCPServerSettings(
         mcp_port=port, mcp_tools_string=tools_string, mcp_log_level="WARNING"
     )
     server = MCPServer(settings)
-    server.run(transport="sse")
+    server.run(transport="streamable-http")
 
 
 @pytest.fixture(scope="module")
@@ -204,15 +203,72 @@ class TestMCPClient:
 
     def test_client_creation_and_tool_model(self):
         """Test MCPClient creation and Tool model."""
-        settings = MCPClientSettings(mcp_client_host="http://localhost", mcp_client_port="8002")
-        client = MCPClient(settings)
+        client = MCPClient(name="test-server", url="http://localhost:8002")
 
         assert client is not None
-        assert "localhost" in client._url
+        assert client.name == "test-server"
+        assert "localhost" in client._mcp_url
+        assert client._mcp_url.endswith("/mcp")
 
-        # Test Tool model
-        tool = Tool(name="test_tool", description="A test tool", parameters={"param1": "string"})
+        # Test Tool model with input_schema (MCP standard)
+        tool = Tool(
+            name="test_tool",
+            description="A test tool",
+            input_schema={
+                "type": "object",
+                "properties": {"param1": {"type": "string"}},
+            },
+        )
         assert tool.name == "test_tool"
         assert tool.description == "A test tool"
+        assert "properties" in tool.input_schema
 
         logger.info("✓ Client creation and Tool model work correctly")
+
+
+@pytest.mark.asyncio
+class TestMCPClientServerIntegration:
+    """Integration tests for MCPClient with MCPServer via MCP protocol."""
+
+    async def test_client_discovers_tools_from_server(self, mcp_server_process):
+        """Test MCPClient can discover tools via MCP protocol."""
+        url = mcp_server_process["url"]
+
+        client = MCPClient(name="test-server", url=url)
+
+        # Initialize client (discovers tools via MCP protocol)
+        result = await client._init()
+        assert result is True
+        assert client._active is True
+
+        # Verify tools were discovered
+        tools = client.get_tools()
+        assert len(tools) >= 2
+        tool_names = [t.name for t in tools]
+        assert "echo" in tool_names
+        assert "add" in tool_names
+
+        # Verify input_schema format
+        echo_tool = next(t for t in tools if t.name == "echo")
+        assert "type" in echo_tool.input_schema
+        assert echo_tool.input_schema["type"] == "object"
+
+        await client.close()
+        logger.info("✓ Client discovers tools from server correctly")
+
+    async def test_client_calls_tool_on_server(self, mcp_server_process):
+        """Test MCPClient can call tools via MCP protocol."""
+        url = mcp_server_process["url"]
+
+        client = MCPClient(name="test-server", url=url)
+
+        # Call echo tool (uses 'text' parameter)
+        result = await client.call_tool("echo", {"text": "Integration test"})
+        assert "Integration test" in str(result)
+
+        # Call add tool
+        result = await client.call_tool("add", {"a": 10, "b": 5})
+        assert result["result"] == 15
+
+        await client.close()
+        logger.info("✓ Client calls tools on server correctly")

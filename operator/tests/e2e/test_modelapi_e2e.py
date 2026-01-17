@@ -40,7 +40,7 @@ async def test_modelapi_proxy_deployment(test_namespace: str):
         # Health check
         response = await client.get(f"{modelapi_url}/health/liveliness", timeout=10.0)
         assert response.status_code == 200
-        
+
         # Models endpoint
         response = await client.get(f"{modelapi_url}/models", timeout=10.0)
         assert response.status_code == 200
@@ -70,21 +70,24 @@ async def test_modelapi_proxy_mock_response(test_namespace: str):
         )
         assert response.status_code == 200
         data = response.json()
-        
+
         # Verify the mock response is returned
         assert "choices" in data
         assert len(data["choices"]) > 0
-        assert "This is a deterministic mock response" in data["choices"][0]["message"]["content"]
+        assert (
+            "This is a deterministic mock response"
+            in data["choices"][0]["message"]["content"]
+        )
 
 
 @pytest.mark.asyncio
 async def test_modelapi_proxy_with_hosted_backend(test_namespace: str):
     """Test ModelAPI Proxy mode pointing to a Hosted ModelAPI backend.
-    
+
     This test creates two ModelAPIs:
     1. A Hosted ModelAPI running Ollama with smollm2:135m
     2. A Proxy ModelAPI (LiteLLM) that routes to the Hosted backend
-    
+
     This validates the full proxy chain without requiring external services.
     Uses Gateway API with custom timeout to allow for LLM inference time.
     """
@@ -103,13 +106,13 @@ async def test_modelapi_proxy_with_hosted_backend(test_namespace: str):
         },
     }
     create_custom_resource(backend_spec, test_namespace)
-    
+
     # Wait for Hosted backend to be ready (longer timeout for model pull)
     wait_for_deployment(test_namespace, f"modelapi-{backend_name}", timeout=180)
-    
+
     # Give Ollama time to fully initialize after deployment is ready
     time.sleep(5)
-    
+
     # Step 2: Create the Proxy that points to the Hosted backend
     # The Hosted ModelAPI service is at: modelapi-{backend_name}.{namespace}:11434
     # Configure gatewayRoute.timeout to 120s to allow for LLM inference
@@ -123,7 +126,7 @@ async def test_modelapi_proxy_with_hosted_backend(test_namespace: str):
             "proxyConfig": {
                 "apiBase": f"http://modelapi-{backend_name}.{test_namespace}:11434",
                 "model": "ollama/smollm2:135m",
-                "env": [{"name": "OPENAI_API_KEY", "value": "sk-test"}]
+                "env": [{"name": "OPENAI_API_KEY", "value": "sk-test"}],
             },
             "gatewayRoute": {
                 "timeout": "120s",
@@ -131,18 +134,18 @@ async def test_modelapi_proxy_with_hosted_backend(test_namespace: str):
         },
     }
     create_custom_resource(proxy_spec, test_namespace)
-    
+
     wait_for_deployment(test_namespace, f"modelapi-{proxy_name}", timeout=120)
-    
+
     # Use Gateway API URL with the extended timeout configured in the CRD
     proxy_url = gateway_url(test_namespace, "modelapi", proxy_name)
     wait_for_resource_ready(proxy_url, health_path="/health/liveliness")
-    
+
     async with httpx.AsyncClient(timeout=120.0) as client:
         # Test proxy health
         response = await client.get(f"{proxy_url}/health/liveliness", timeout=10.0)
         assert response.status_code == 200
-        
+
         # Test actual model inference through the proxy chain via Gateway
         response = await client.post(
             f"{proxy_url}/v1/chat/completions",
@@ -155,7 +158,7 @@ async def test_modelapi_proxy_with_hosted_backend(test_namespace: str):
         )
         assert response.status_code == 200
         data = response.json()
-        
+
         # Verify we got a real response from Ollama through the proxy
         assert "choices" in data
         assert len(data["choices"]) > 0
@@ -165,7 +168,7 @@ async def test_modelapi_proxy_with_hosted_backend(test_namespace: str):
 @pytest.mark.asyncio
 async def test_modelapi_hosted_ollama(test_namespace: str):
     """Test ModelAPI Hosted mode with Ollama (smollm2:135m model).
-    
+
     Note: Hosted mode runs Ollama on port 11434, not 8000.
     Gateway API HTTPRoute is for port 8000, so we use port-forward for this test.
     """

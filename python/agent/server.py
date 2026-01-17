@@ -8,6 +8,7 @@ Supports both streaming and non-streaming responses.
 import time
 import uuid
 import logging
+import sys
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
@@ -20,6 +21,44 @@ import uvicorn
 from modelapi.client import ModelAPI
 from agent.client import Agent, RemoteAgent
 from agent.memory import LocalMemory
+from mcptools.client import MCPClient
+
+
+def configure_logging(level: str = "INFO") -> None:
+    """Configure logging for the application.
+
+    Sets up a consistent logging format and ensures all application loggers
+    are properly configured to output to stdout.
+    """
+    log_level = getattr(logging, level.upper(), logging.INFO)
+
+    # Configure root logger
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stdout,
+        force=True,  # Override any existing configuration
+    )
+
+    # Ensure our application loggers are at the right level
+    for logger_name in [
+        "agent",
+        "agent.server",
+        "agent.client",
+        "agent.memory",
+        "modelapi",
+        "modelapi.client",
+        "mcptools",
+        "mcptools.client",
+    ]:
+        logging.getLogger(logger_name).setLevel(log_level)
+
+    # Reduce noise from third-party libraries
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.error").setLevel(log_level)
+
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +84,11 @@ class AgentServerSettings(BaseSettings):
     # Alternative: Kubernetes operator format (PEER_AGENTS comma-separated names)
     # Individual URLs via PEER_AGENT_<NAME>_CARD_URL env vars
     peer_agents: str = ""
+
+    # MCP server configuration (Kubernetes operator format)
+    # Format: "[server1,server2]" or "server1,server2"
+    # Individual URLs via MCP_SERVER_<NAME>_URL env vars
+    mcp_servers: str = ""
 
     # Agentic loop configuration (from K8s operator)
     agentic_loop_max_steps: int = 5
@@ -109,10 +153,46 @@ class AgentServer:
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
         """Manage agent lifecycle."""
-        logger.info("AgentServer startup")
+        self._log_startup_config()
         yield
         logger.info("AgentServer shutdown")
         await self.agent.close()
+
+    def _log_startup_config(self):
+        """Log server configuration on startup for debugging."""
+        logger.info("=" * 60)
+        logger.info("AgentServer Starting")
+        logger.info("=" * 60)
+        logger.info(f"Agent Name: {self.agent.name}")
+        logger.info(f"Description: {self.agent.description}")
+        logger.info(f"Port: {self.port}")
+        logger.info(f"Max Steps: {self.agent.max_steps}")
+        logger.info(f"Memory Context Limit: {self.agent.memory_context_limit}")
+
+        # Log model API info
+        if self.agent.model_api:
+            logger.info(f"Model API: {self.agent.model_api.api_base}")
+            logger.info(f"Model: {self.agent.model_api.model}")
+
+        # Log MCP tools
+        if self.agent.mcp_clients:
+            logger.info(f"MCP Servers: {len(self.agent.mcp_clients)}")
+            for mcp in self.agent.mcp_clients:
+                logger.info(f"  - {mcp.name}: {mcp.url}")
+        else:
+            logger.info("MCP Servers: None")
+
+        # Log sub-agents
+        if self.agent.sub_agents:
+            logger.info(f"Sub-agents: {len(self.agent.sub_agents)}")
+            for name, sub in self.agent.sub_agents.items():
+                logger.info(f"  - {name}: {sub.card_url}")
+        else:
+            logger.info("Sub-agents: None")
+
+        logger.info(f"Debug Memory Endpoints: {self.debug_memory_endpoints}")
+        logger.info(f"Access Log: {self.access_log}")
+        logger.info("=" * 60)
 
     def _setup_routes(self):
         """Setup HTTP routes for health, A2A, and OpenAI endpoints."""
@@ -143,7 +223,7 @@ class AgentServer:
         async def agent_card():
             """A2A agent discovery endpoint."""
             base_url = f"http://localhost:{self.port}"
-            card = self.agent.get_agent_card(base_url)
+            card = await self.agent.get_agent_card(base_url)
             return JSONResponse(card.to_dict())
 
         # Debug memory endpoints (only enabled when debug_memory_endpoints=True)
@@ -326,7 +406,7 @@ def create_agent_server(
     settings: Optional[AgentServerSettings] = None,
     sub_agents: Optional[List[RemoteAgent]] = None,
 ) -> AgentServer:
-    """Create an AgentServer with optional sub-agents.
+    """Create an AgentServer with optional sub-agents and MCP clients.
 
     Args:
         settings: Server settings (loaded from env if not provided)
@@ -336,12 +416,40 @@ def create_agent_server(
         AgentServer instance
     """
     import os
+    import re
 
     if not settings:
         # Load from environment variables - requires AGENT_NAME and MODEL_API_URL
         settings = AgentServerSettings()  # type: ignore[call-arg]
 
+    # Configure logging before anything else
+    configure_logging(settings.agent_log_level)
+
     model_api = ModelAPI(model=settings.model_name, api_base=settings.model_api_url)
+
+    # Parse MCP servers from settings
+    # Format: "[server1,server2]" or "server1,server2"
+    mcp_clients: List[MCPClient] = []
+    if settings.mcp_servers:
+        # Remove brackets if present (K8s operator format: "[name1,name2]")
+        mcp_servers_str = settings.mcp_servers.strip()
+        if mcp_servers_str.startswith("[") and mcp_servers_str.endswith("]"):
+            mcp_servers_str = mcp_servers_str[1:-1]
+
+        for server_name in mcp_servers_str.split(","):
+            server_name = server_name.strip()
+            if server_name:
+                # Look for MCP_SERVER_<NAME>_URL env var
+                # Operator uses exact name: MCP_SERVER_<name>_URL (preserves hyphens and case)
+                env_name = f"MCP_SERVER_{server_name}_URL"
+                server_url = os.environ.get(env_name)
+                if server_url:
+                    mcp_clients.append(MCPClient(name=server_name, url=server_url))
+                    logger.info(f"Configured MCP server: {server_name} -> {server_url}")
+                else:
+                    logger.warning(
+                        f"No URL found for MCP server {server_name} (expected {env_name})"
+                    )
 
     # Parse sub-agents from settings if not provided directly
     if sub_agents is None:
@@ -372,12 +480,13 @@ def create_agent_server(
                             f"No URL found for peer agent {peer_name} (expected {env_name})"
                         )
 
-    # Create agentic loop config from settings
+    # Create agent with MCP clients and sub-agents
     agent = Agent(
         name=settings.agent_name,
         description=settings.agent_description,
         instructions=settings.agent_instructions,
         model_api=model_api,
+        mcp_clients=mcp_clients,
         sub_agents=sub_agents,
         max_steps=settings.agentic_loop_max_steps,
         memory_context_limit=settings.memory_context_limit,
@@ -390,9 +499,6 @@ def create_agent_server(
         access_log=settings.agent_access_log,
     )
 
-    logger.info(
-        f"Created agent server: {settings.agent_name} with {len(sub_agents)} sub-agents, max_steps={settings.agentic_loop_max_steps}"
-    )
     return server
 
 
