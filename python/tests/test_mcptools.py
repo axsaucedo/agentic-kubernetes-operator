@@ -16,7 +16,7 @@ import logging
 from multiprocessing import Process
 
 from mcptools.server import MCPServer, MCPServerSettings
-from mcptools.client import MCPClient, MCPClientSettings, Tool
+from mcptools.client import MCPClient, Tool
 
 logger = logging.getLogger(__name__)
 
@@ -204,11 +204,12 @@ class TestMCPClient:
 
     def test_client_creation_and_tool_model(self):
         """Test MCPClient creation and Tool model."""
-        settings = MCPClientSettings(mcp_client_host="http://localhost", mcp_client_port="8002")
-        client = MCPClient(settings)
+        client = MCPClient(name="test-server", url="http://localhost:8002")
 
         assert client is not None
+        assert client.name == "test-server"
         assert "localhost" in client._url
+        assert client._url.endswith("/mcp/tools")
 
         # Test Tool model
         tool = Tool(name="test_tool", description="A test tool", parameters={"param1": "string"})

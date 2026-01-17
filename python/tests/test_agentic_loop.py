@@ -20,7 +20,7 @@ from agent.client import Agent, RemoteAgent
 from agent.memory import LocalMemory
 from agent.server import AgentServerSettings, create_agent_server
 from modelapi.client import ModelAPI
-from mcptools.client import MCPClient, Tool, MCPClientSettings
+from mcptools.client import MCPClient, Tool
 
 logger = logging.getLogger(__name__)
 
