@@ -30,14 +30,40 @@ class MCPClient:
 
     TIMEOUT = 5.0  # Short timeout - MCP servers should respond quickly
 
-    def __init__(self, settings: MCPClientSettings):
-        self._url = (
-            f"{settings.mcp_client_host}:{settings.mcp_client_port}{settings.mcp_client_endpoint}"
-        )
+    def __init__(
+        self,
+        settings: Optional[MCPClientSettings] = None,
+        *,
+        name: Optional[str] = None,
+        url: Optional[str] = None,
+    ):
+        """Initialize MCPClient.
+
+        Args:
+            settings: MCPClientSettings object (legacy/test mode)
+            name: Name of the MCP server (for logging)
+            url: Base URL of the MCP server (e.g., 'http://localhost:8000')
+        """
+        if settings is not None:
+            # Legacy settings-based initialization
+            self._url = f"{settings.mcp_client_host}:{settings.mcp_client_port}{settings.mcp_client_endpoint}"
+            self.name = "mcp-server"
+        elif url is not None:
+            # Direct URL initialization (from operator)
+            # Append /mcp/tools if not already a tools endpoint
+            if "/mcp/tools" not in url:
+                self._url = f"{url.rstrip('/')}/mcp/tools"
+            else:
+                self._url = url
+            self.name = name or "mcp-server"
+        else:
+            raise ValueError("Either 'settings' or 'url' must be provided")
+
+        self.url = url or self._url  # Store base URL for logging
         self._tools: Dict[str, Tool] = {}
         self._active = False
         self._client = httpx.AsyncClient(timeout=self.TIMEOUT)
-        logger.info(f"MCPClient initialized: {self._url}")
+        logger.info(f"MCPClient initialized: {self.name} -> {self._url}")
 
     async def _init(self) -> bool:
         """Discover tools and activate. Returns True if successful."""

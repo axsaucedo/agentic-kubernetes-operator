@@ -440,8 +440,8 @@ def create_agent_server(
             server_name = server_name.strip()
             if server_name:
                 # Look for MCP_SERVER_<NAME>_URL env var
-                # Replace hyphens with underscores for env var name
-                env_name = f"MCP_SERVER_{server_name.upper().replace('-', '_')}_URL"
+                # Operator uses exact name: MCP_SERVER_<name>_URL (preserves hyphens and case)
+                env_name = f"MCP_SERVER_{server_name}_URL"
                 server_url = os.environ.get(env_name)
                 if server_url:
                     mcp_clients.append(MCPClient(name=server_name, url=server_url))
