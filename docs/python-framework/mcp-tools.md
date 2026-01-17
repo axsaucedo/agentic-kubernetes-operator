@@ -24,21 +24,20 @@ Client for discovering and calling tools on MCP servers.
 ### Configuration
 
 ```python
-from mcptools.client import MCPClient, MCPClientSettings
+from mcptools.client import MCPClient
 
-settings = MCPClientSettings(
-    mcp_client_host="http://localhost",
-    mcp_client_port="8001",
-    mcp_client_endpoint="/mcp/tools"  # Optional, default
-)
-
-client = MCPClient(settings)
+# Create client with name and URL
+client = MCPClient(name="my-server", url="http://localhost:8001")
 ```
 
 ### Discover Tools
 
+The client uses lazy initialization - tools are discovered automatically on first use:
+
 ```python
-await client.discover_tools()
+# Tools are discovered automatically when needed
+# Or manually initialize with _init()
+await client._init()
 
 for tool in client.get_tools():
     print(f"{tool.name}: {tool.description}")
@@ -226,21 +225,16 @@ spec:
 
 ```python
 from agent.client import Agent
-from mcptools.client import MCPClient, MCPClientSettings
+from mcptools.client import MCPClient
 from modelapi.client import ModelAPI
 
 # Create MCP client
-mcp_settings = MCPClientSettings(
-    mcp_client_host="http://localhost",
-    mcp_client_port="8001"
-)
-mcp_client = MCPClient(mcp_settings)
-await mcp_client.discover_tools()
+mcp_client = MCPClient(name="my-tools", url="http://localhost:8001")
 
-# Create agent with MCP client
+# Create agent with MCP client (tools are discovered automatically)
 agent = Agent(
     name="tool-agent",
-    model_api=ModelAPI(...),
+    model_api=ModelAPI(model="gpt-4", api_base="http://localhost:8000"),
     mcp_clients=[mcp_client],
     instructions="Use the available tools to help users."
 )
@@ -281,8 +275,8 @@ async def mcp_server():
 
 ```python
 async def test_tool_discovery():
-    client = MCPClient(settings)
-    await client.discover_tools()
+    client = MCPClient(name="test-server", url="http://localhost:8001")
+    await client._init()  # Discover tools
     
     tools = client.get_tools()
     assert len(tools) > 0
