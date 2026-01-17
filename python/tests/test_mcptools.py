@@ -217,3 +217,112 @@ class TestMCPClient:
         assert tool.description == "A test tool"
 
         logger.info("✓ Client creation and Tool model work correctly")
+
+
+class TestMCPRestEndpoint:
+    """Tests for MCP server REST /mcp/tools endpoint."""
+
+    def test_rest_tools_list_endpoint(self, mcp_server_process):
+        """Test GET /mcp/tools returns tool list."""
+        url = mcp_server_process["url"]
+
+        response = httpx.get(f"{url}/mcp/tools")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "tools" in data
+        tools = data["tools"]
+
+        # Should have our registered tools
+        tool_names = [t["name"] for t in tools]
+        assert "echo" in tool_names
+        assert "add" in tool_names
+
+        # Each tool should have name, description, and parameters
+        echo_tool = next(t for t in tools if t["name"] == "echo")
+        assert "description" in echo_tool
+        assert "parameters" in echo_tool
+
+        logger.info("✓ REST tools list endpoint works correctly")
+
+    def test_rest_tool_call_endpoint(self, mcp_server_process):
+        """Test POST /mcp/tools calls a tool."""
+        url = mcp_server_process["url"]
+
+        # Call echo tool (uses 'text' parameter)
+        response = httpx.post(
+            f"{url}/mcp/tools", json={"tool": "echo", "arguments": {"text": "Hello World"}}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "result" in data
+        assert "Hello World" in data["result"]
+
+        # Call add tool
+        response = httpx.post(
+            f"{url}/mcp/tools", json={"tool": "add", "arguments": {"a": 5, "b": 3}}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"] == 8
+
+        logger.info("✓ REST tool call endpoint works correctly")
+
+    def test_rest_tool_call_missing_tool(self, mcp_server_process):
+        """Test POST /mcp/tools with missing tool field."""
+        url = mcp_server_process["url"]
+
+        response = httpx.post(f"{url}/mcp/tools", json={"arguments": {"message": "test"}})
+        assert response.status_code == 400
+        assert "error" in response.json()
+
+    def test_rest_tool_call_unknown_tool(self, mcp_server_process):
+        """Test POST /mcp/tools with unknown tool."""
+        url = mcp_server_process["url"]
+
+        response = httpx.post(f"{url}/mcp/tools", json={"tool": "unknown_tool", "arguments": {}})
+        assert response.status_code == 404
+        assert "error" in response.json()
+
+
+@pytest.mark.asyncio
+class TestMCPClientServerIntegration:
+    """Integration tests for MCPClient with MCPServer."""
+
+    async def test_client_discovers_tools_from_server(self, mcp_server_process):
+        """Test MCPClient can discover tools from running server."""
+        url = mcp_server_process["url"]
+
+        client = MCPClient(name="test-server", url=url)
+
+        # Initialize client (discovers tools)
+        result = await client._init()
+        assert result is True
+        assert client._active is True
+
+        # Verify tools were discovered
+        tools = client.get_tools()
+        assert len(tools) >= 2
+        tool_names = [t.name for t in tools]
+        assert "echo" in tool_names
+        assert "add" in tool_names
+
+        await client.close()
+        logger.info("✓ Client discovers tools from server correctly")
+
+    async def test_client_calls_tool_on_server(self, mcp_server_process):
+        """Test MCPClient can call tools on running server."""
+        url = mcp_server_process["url"]
+
+        client = MCPClient(name="test-server", url=url)
+
+        # Call echo tool (uses 'text' parameter)
+        result = await client.call_tool("echo", {"text": "Integration test"})
+        assert "Integration test" in str(result)
+
+        # Call add tool
+        result = await client.call_tool("add", {"a": 10, "b": 5})
+        assert result["result"] == 15
+
+        await client.close()
+        logger.info("✓ Client calls tools on server correctly")

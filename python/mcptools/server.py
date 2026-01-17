@@ -130,7 +130,7 @@ class MCPServer:
     def create_app(
         self, transport: Literal["http", "streamable-http", "sse"] = "http"
     ) -> StarletteWithLifespan:
-        """Create FastMCP ASGI app with health probes."""
+        """Create FastMCP ASGI app with health probes and REST tool endpoints."""
         mcp_app = self.mcp.http_app(transport=transport)
 
         async def health(request):
@@ -151,9 +151,70 @@ class MCPServer:
                 }
             )
 
-        # Prepend health routes
+        async def list_tools(request):
+            """REST endpoint to list available tools (GET /mcp/tools)."""
+            tools = []
+            for name, func in self.tools_registry.items():
+                # Build parameters from function annotations
+                params = {}
+                if hasattr(func, "__annotations__"):
+                    for param_name, param_type in func.__annotations__.items():
+                        if param_name != "return":
+                            type_name = getattr(param_type, "__name__", str(param_type))
+                            params[param_name] = type_name
+
+                tools.append(
+                    {
+                        "name": name,
+                        "description": (
+                            func.__doc__.split("\n")[0] if func.__doc__ else "No description"
+                        ),
+                        "parameters": params,
+                    }
+                )
+            return JSONResponse({"tools": tools})
+
+        async def call_tool(request):
+            """REST endpoint to call a tool (POST /mcp/tools)."""
+            try:
+                body = await request.json()
+                tool_name = body.get("tool")
+                arguments = body.get("arguments", {})
+
+                if not tool_name:
+                    return JSONResponse({"error": "Missing 'tool' field"}, status_code=400)
+
+                if tool_name not in self.tools_registry:
+                    return JSONResponse(
+                        {"error": f"Tool '{tool_name}' not found"},
+                        status_code=404,
+                    )
+
+                func = self.tools_registry[tool_name]
+                result = func(**arguments)
+
+                return JSONResponse({"result": result})
+            except json.JSONDecodeError:
+                return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+            except TypeError as e:
+                return JSONResponse({"error": f"Invalid arguments: {e}"}, status_code=400)
+            except Exception as e:
+                logger.error(f"Tool call error: {e}")
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+        async def mcp_tools_handler(request):
+            """Handle both GET and POST for /mcp/tools."""
+            if request.method == "GET":
+                return await list_tools(request)
+            elif request.method == "POST":
+                return await call_tool(request)
+            else:
+                return JSONResponse({"error": "Method not allowed"}, status_code=405)
+
+        # Prepend health routes and REST tool endpoint
         mcp_app.routes.insert(0, Route("/health", health))
         mcp_app.routes.insert(1, Route("/ready", ready))
+        mcp_app.routes.insert(2, Route("/mcp/tools", mcp_tools_handler, methods=["GET", "POST"]))
 
         return mcp_app
 
