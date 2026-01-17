@@ -13,6 +13,7 @@ import pytest
 import httpx
 
 from e2e.conftest import (
+    async_wait_for_healthy,
     create_custom_resource,
     wait_for_deployment,
     wait_for_resource_ready,
@@ -64,7 +65,9 @@ def create_agent_with_mcp(
         {"name": "MODEL_NAME", "value": "ollama/smollm2:135m"},
     ]
     if mock_responses:
-        env.append({"name": "DEBUG_MOCK_RESPONSES", "value": json.dumps(mock_responses)})
+        env.append(
+            {"name": "DEBUG_MOCK_RESPONSES", "value": json.dumps(mock_responses)}
+        )
 
     return {
         "apiVersion": "kaos.tools/v1alpha1",
@@ -136,7 +139,9 @@ async def test_mcpserver_ready_shows_tools(test_namespace: str):
 
 
 @pytest.mark.asyncio
-async def test_agent_with_mcp_tools_discovery(test_namespace: str, shared_modelapi: str):
+async def test_agent_with_mcp_tools_discovery(
+    test_namespace: str, shared_modelapi: str
+):
     """Test Agent can discover tools from MCPServer via MCP protocol."""
     mcp_name = "mcp-agent-disc"
     agent_name = "mcp-test-agent"
@@ -150,12 +155,17 @@ async def test_agent_with_mcp_tools_discovery(test_namespace: str, shared_modela
     wait_for_resource_ready(mcp_url)
 
     # Deploy Agent connected to MCPServer (no mock responses - just testing discovery)
-    agent_spec = create_agent_with_mcp(test_namespace, shared_modelapi, mcp_name, agent_name)
+    agent_spec = create_agent_with_mcp(
+        test_namespace, shared_modelapi, mcp_name, agent_name
+    )
     create_custom_resource(agent_spec, test_namespace)
     wait_for_deployment(test_namespace, f"agent-{agent_name}", timeout=120)
 
     agent_url = gateway_url(test_namespace, "agent", agent_name)
     wait_for_resource_ready(agent_url)
+
+    # Use async helper with retries to handle transient 503s from gateway
+    await async_wait_for_healthy(agent_url)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Verify agent is healthy
@@ -178,7 +188,9 @@ async def test_agent_with_mcp_tools_discovery(test_namespace: str, shared_modela
 
 
 @pytest.mark.asyncio
-async def test_agent_tool_calling_with_memory(test_namespace: str, shared_modelapi: str):
+async def test_agent_tool_calling_with_memory(
+    test_namespace: str, shared_modelapi: str
+):
     """Test Agent calls MCP tool and memory tracks the event.
 
     Uses DEBUG_MOCK_RESPONSES to trigger a tool call, then verifies:
@@ -199,21 +211,28 @@ async def test_agent_tool_calling_with_memory(test_namespace: str, shared_modela
 
     # Deploy Agent with mock response that triggers tool call
     mock_responses = [
-        f'''I'll use the echo tool to help you.
+        f"""I'll use the echo tool to help you.
 ```tool_call
 {{"tool": "echo", "arguments": {{"message": "Task {task_id} processed"}}}}
-```''',
+```""",
         f"The echo tool returned the result for task {task_id}.",
     ]
 
     agent_spec = create_agent_with_mcp(
-        test_namespace, shared_modelapi, mcp_name, agent_name, mock_responses=mock_responses
+        test_namespace,
+        shared_modelapi,
+        mcp_name,
+        agent_name,
+        mock_responses=mock_responses,
     )
     create_custom_resource(agent_spec, test_namespace)
     wait_for_deployment(test_namespace, f"agent-{agent_name}", timeout=120)
 
     agent_url = gateway_url(test_namespace, "agent", agent_name)
     wait_for_resource_ready(agent_url)
+
+    # Use async helper with retries to handle transient 503s from gateway
+    await async_wait_for_healthy(agent_url)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         # Send user message - mock response will trigger tool call
@@ -222,7 +241,10 @@ async def test_agent_tool_calling_with_memory(test_namespace: str, shared_modela
             json={
                 "model": agent_name,
                 "messages": [
-                    {"role": "user", "content": f"Please process task {task_id} using the echo tool"}
+                    {
+                        "role": "user",
+                        "content": f"Please process task {task_id} using the echo tool",
+                    }
                 ],
             },
         )
@@ -241,7 +263,9 @@ async def test_agent_tool_calling_with_memory(test_namespace: str, shared_modela
 
         # Should have tool_call and tool_result events
         assert "tool_call" in event_types, f"Missing tool_call in events: {event_types}"
-        assert "tool_result" in event_types, f"Missing tool_result in events: {event_types}"
+        assert (
+            "tool_result" in event_types
+        ), f"Missing tool_result in events: {event_types}"
 
         # Verify the tool call was for our task
         tool_calls = [e for e in memory["events"] if e["event_type"] == "tool_call"]
@@ -320,11 +344,11 @@ def uppercase(text: str) -> str:
     agent_url = gateway_url(test_namespace, "agent", agent_name)
     wait_for_resource_ready(agent_url)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Verify agent is healthy
-        response = await client.get(f"{agent_url}/health")
-        assert response.status_code == 200
+    # Use async helper with retries to handle transient 503s from gateway
+    response = await async_wait_for_healthy(agent_url)
+    assert response.status_code == 200
 
+    async with httpx.AsyncClient(timeout=30.0) as client:
         # Verify agent card has tool_execution capability
         response = await client.get(f"{agent_url}/.well-known/agent")
         assert response.status_code == 200
