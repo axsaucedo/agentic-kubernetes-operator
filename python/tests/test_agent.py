@@ -72,8 +72,8 @@ class TestAgentCreationAndCard:
         assert agent.model_api == mock_llm
         assert agent.memory == memory
 
-        # Test AgentCard generation
-        card = agent.get_agent_card("http://localhost:8000")
+        # Test AgentCard generation (now async to init MCP clients)
+        card = await agent.get_agent_card("http://localhost:8000")
 
         assert card.name == "test-agent"
         assert card.description == "Test Agent Description"
@@ -110,8 +110,8 @@ class TestAgentCreationAndCard:
         assert agent.sub_agents["worker-1"] is sub_agent1
         assert agent.sub_agents["worker-2"] is sub_agent2
 
-        # Card should indicate delegation capability
-        card = agent.get_agent_card("http://localhost:8000")
+        # Card should indicate delegation capability (now async)
+        card = await agent.get_agent_card("http://localhost:8000")
         assert "task_delegation" in card.capabilities
 
         # Cleanup

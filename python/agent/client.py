@@ -501,10 +501,13 @@ class Agent:
                 )
             return f"[Delegation failed: {error_msg}]"
 
-    def get_agent_card(self, base_url: str) -> AgentCard:
+    async def get_agent_card(self, base_url: str) -> AgentCard:
         """Generate agent card for A2A discovery."""
         skills = []
         for mcp_client in self.mcp_clients:
+            # Ensure MCP client is initialized to discover tools
+            if not mcp_client._active:
+                await mcp_client._init()
             for tool in mcp_client.get_tools():
                 skills.append(
                     {

@@ -223,7 +223,7 @@ class AgentServer:
         async def agent_card():
             """A2A agent discovery endpoint."""
             base_url = f"http://localhost:{self.port}"
-            card = self.agent.get_agent_card(base_url)
+            card = await self.agent.get_agent_card(base_url)
             return JSONResponse(card.to_dict())
 
         # Debug memory endpoints (only enabled when debug_memory_endpoints=True)
