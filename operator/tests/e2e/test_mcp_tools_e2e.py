@@ -200,12 +200,12 @@ async def test_agent_with_mcp_tools_discovery(test_namespace: str, shared_modela
         response = await client.get(f"{agent_url}/health")
         assert response.status_code == 200
         
-        # Verify agent card has tool_calling capability
+        # Verify agent card has tool_execution capability
         response = await client.get(f"{agent_url}/.well-known/agent")
         assert response.status_code == 200
         card = response.json()
-        assert "tool_calling" in card["capabilities"], \
-            f"Expected tool_calling capability, got: {card['capabilities']}"
+        assert "tool_execution" in card["capabilities"], \
+            f"Expected tool_execution capability, got: {card['capabilities']}"
 
 
 @pytest.mark.asyncio
@@ -271,21 +271,21 @@ async def test_agent_tool_calling_with_memory(test_namespace: str, shared_modela
         
         event_types = [e["event_type"] for e in memory["events"]]
         
-        # Should have tool_call_request and tool_call_response
-        assert "tool_call_request" in event_types, \
-            f"Missing tool_call_request in events: {event_types}"
-        assert "tool_call_response" in event_types, \
-            f"Missing tool_call_response in events: {event_types}"
+        # Should have tool_call and tool_result events
+        assert "tool_call" in event_types, \
+            f"Missing tool_call in events: {event_types}"
+        assert "tool_result" in event_types, \
+            f"Missing tool_result in events: {event_types}"
         
         # Verify the tool call was for our task
-        tool_requests = [e for e in memory["events"] if e["event_type"] == "tool_call_request"]
-        assert any(task_id in str(e["content"]) for e in tool_requests), \
-            f"Task {task_id} not found in tool call requests"
+        tool_calls = [e for e in memory["events"] if e["event_type"] == "tool_call"]
+        assert any(task_id in str(e["content"]) for e in tool_calls), \
+            f"Task {task_id} not found in tool call events"
         
-        # Verify tool response contains the echo result
-        tool_responses = [e for e in memory["events"] if e["event_type"] == "tool_call_response"]
-        assert any("Echo:" in str(e["content"]) for e in tool_responses), \
-            f"Echo response not found in tool call responses"
+        # Verify tool result contains the echo result
+        tool_results = [e for e in memory["events"] if e["event_type"] == "tool_result"]
+        assert any("Echo:" in str(e["content"]) for e in tool_results), \
+            f"Echo response not found in tool result events"
 
 
 @pytest.mark.asyncio
@@ -357,8 +357,8 @@ def uppercase(text: str) -> str:
         response = await client.get(f"{agent_url}/health")
         assert response.status_code == 200
         
-        # Verify agent card has tool_calling capability
+        # Verify agent card has tool_execution capability
         response = await client.get(f"{agent_url}/.well-known/agent")
         assert response.status_code == 200
         card = response.json()
-        assert "tool_calling" in card["capabilities"]
+        assert "tool_execution" in card["capabilities"]
