@@ -3,13 +3,15 @@
 /* Make hero image (demo GIF) larger */
 @media (min-width: 960px) {
   .VPHero .image-src {
-    max-width: 600px;
-    max-height: 600px;
+    margin-top: 20px;
+    max-width: 650px !important;
+    max-height: 650px !important;
   }
 }
 
 @media (min-width: 640px) {
   .VPHero .image-src {
+    margin-top: 20px;
     max-width: 500px;
     max-height: 800px;
   }
