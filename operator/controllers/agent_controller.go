@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -453,14 +454,17 @@ func (r *AgentReconciler) constructEnvVars(agent *kaosv1alpha1.Agent, modelapi *
 		for name := range mcpServers {
 			mcpNames = append(mcpNames, name)
 		}
+		// Sort for deterministic order (prevents hash oscillation)
+		sort.Strings(mcpNames)
 
 		env = append(env, corev1.EnvVar{
 			Name:  "MCP_SERVERS",
 			Value: strings.Join(mcpNames, ","), // Comma-separated list
 		})
 
-		// Add individual MCP server URLs
-		for name, endpoint := range mcpServers {
+		// Add individual MCP server URLs (in sorted order)
+		for _, name := range mcpNames {
+			endpoint := mcpServers[name]
 			env = append(env, corev1.EnvVar{
 				Name:  fmt.Sprintf("MCP_SERVER_%s_URL", name),
 				Value: endpoint,
@@ -474,14 +478,17 @@ func (r *AgentReconciler) constructEnvVars(agent *kaosv1alpha1.Agent, modelapi *
 		for name := range peerAgents {
 			peerNames = append(peerNames, name)
 		}
+		// Sort for deterministic order (prevents hash oscillation)
+		sort.Strings(peerNames)
 
 		env = append(env, corev1.EnvVar{
 			Name:  "PEER_AGENTS",
 			Value: strings.Join(peerNames, ","),
 		})
 
-		// Add individual peer agent card URLs
-		for name, endpoint := range peerAgents {
+		// Add individual peer agent card URLs (in sorted order)
+		for _, name := range peerNames {
+			endpoint := peerAgents[name]
 			// Convert name to valid env var format (uppercase, replace hyphens with underscores)
 			envName := strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 			env = append(env, corev1.EnvVar{
