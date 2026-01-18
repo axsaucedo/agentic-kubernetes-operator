@@ -1,5 +1,16 @@
-```markdown
-🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+# KAOS: K8s Agent Orchestration System
+
+<p align="center">
+  <strong>Deploy, manage, and orchestrate AI agents on Kubernetes</strong>
+</p>
+
+
+<table width="100%">
+<tr>
+<td>
+<pre>
+<code>
+🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
 🔥                                               🔥
 🔥       ██╗  ██╗ █████╗  ██████╗ ███████╗       🔥
 🔥       ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝       🔥
@@ -12,28 +23,27 @@
 🔥                                               🔥
 🔥  Managing the chaos in your agentic systems   🔥
 🔥                                               🔥
-🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
-```
-
-# KAOS: K8s Agent Orchestration System
-
-<p align="center">
-  <strong>Deploy, manage, and orchestrate AI agents on Kubernetes</strong>
-</p>
-
-<p align="center">
-  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://kubernetes.io"><img src="https://img.shields.io/badge/kubernetes-%3E%3D1.28-blue" alt="Kubernetes"></a>
-  <a href="https://go.dev"><img src="https://img.shields.io/badge/go-%3E%3D1.21-blue" alt="Go"></a>
-  <a href="https://python.org"><img src="https://img.shields.io/badge/python-%3E%3D3.11-blue" alt="Python"></a>
-</p>
-
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#documentation">Documentation</a>
-</p>
+🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥
+</pre>
+</code>
+</td>
+<td>
+    <p align="center">
+      <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a><br>
+      <a href="https://kubernetes.io"><img src="https://img.shields.io/badge/kubernetes-%3E%3D1.28-blue" alt="Kubernetes"></a><br>
+      <a href="https://go.dev"><img src="https://img.shields.io/badge/go-%3E%3D1.21-blue" alt="Go"></a><br>
+      <a href="https://python.org"><img src="https://img.shields.io/badge/python-%3E%3D3.11-blue" alt="Python"></a><br>
+    </p>
+    <h3 align="center">Docs Nav</h3>
+    <p align="center">
+      <a href="#features">Features</a> <br>
+      <a href="#quick-start">Quick Start</a> <br>
+      <a href="#architecture">Architecture</a> <br>
+      <a href="#documentation">Documentation</a> <br>
+    </p>
+</td>
+</tr>
+</table>
 
 ---
 
