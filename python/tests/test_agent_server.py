@@ -27,7 +27,7 @@ def run_agent_server(
     instructions: str = "You are a helpful assistant. Be brief.",
     sub_agents_config: str = "",
 ):
-    """Run agent server in subprocess with debug endpoints enabled."""
+    """Run agent server in subprocess (memory endpoints always enabled)."""
     settings = AgentServerSettings(
         agent_name=agent_name,
         agent_description=f"Agent: {agent_name}",
@@ -36,7 +36,6 @@ def run_agent_server(
         model_api_url=model_url,
         model_name=model_name,
         agent_log_level="WARNING",
-        agent_debug_memory_endpoints=True,
         agent_sub_agents=sub_agents_config,
     )
     server = create_agent_server(settings)

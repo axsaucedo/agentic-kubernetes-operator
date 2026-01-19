@@ -93,11 +93,12 @@ class AgentServerSettings(BaseSettings):
     # Agentic loop configuration (from K8s operator)
     agentic_loop_max_steps: int = 5
 
-    # Memory context limit for delegation (number of messages to include)
-    memory_context_limit: int = 6
-
-    # Debug settings (only enable in development/testing)
-    agent_debug_memory_endpoints: bool = False
+    # Memory configuration
+    memory_enabled: bool = True  # Enable/disable memory (NullMemory when disabled)
+    memory_type: str = "local"  # Memory type (only "local" supported currently)
+    memory_context_limit: int = 6  # Messages to include in delegation context
+    memory_max_sessions: int = 1000  # Maximum sessions to keep
+    memory_max_session_events: int = 500  # Maximum events per session
 
     # Logging settings
     agent_access_log: bool = False  # Mute uvicorn access logs by default
@@ -124,7 +125,6 @@ class AgentServer:
         self,
         agent: Agent,
         port: int = 8000,
-        debug_memory_endpoints: bool = False,
         access_log: bool = False,
     ):
         """Initialize AgentServer with an agent.
@@ -132,12 +132,10 @@ class AgentServer:
         Args:
             agent: Agent instance to serve
             port: Port to serve on
-            debug_memory_endpoints: Whether to enable /memory/* endpoints (for testing)
             access_log: Whether to enable uvicorn access logs (default: False)
         """
         self.agent = agent
         self.port = port
-        self.debug_memory_endpoints = debug_memory_endpoints
         self.access_log = access_log
 
         # Create FastAPI app
@@ -168,6 +166,7 @@ class AgentServer:
         logger.info(f"Port: {self.port}")
         logger.info(f"Max Steps: {self.agent.max_steps}")
         logger.info(f"Memory Context Limit: {self.agent.memory_context_limit}")
+        logger.info(f"Memory Enabled: {self.agent.memory_enabled}")
 
         # Log model API info
         if self.agent.model_api:
@@ -190,7 +189,6 @@ class AgentServer:
         else:
             logger.info("Sub-agents: None")
 
-        logger.info(f"Debug Memory Endpoints: {self.debug_memory_endpoints}")
         logger.info(f"Access Log: {self.access_log}")
         logger.info("=" * 60)
 
@@ -226,36 +224,51 @@ class AgentServer:
             card = await self.agent.get_agent_card(base_url)
             return JSONResponse(card.to_dict())
 
-        # Debug memory endpoints (only enabled when debug_memory_endpoints=True)
-        if self.debug_memory_endpoints:
+        # Memory endpoints (always enabled - used by UI and debugging)
+        @self.app.get("/memory/events")
+        async def get_memory_events(
+            limit: int = 100,
+            session_id: Optional[str] = None,
+        ):
+            """Get memory events with optional filtering.
 
-            @self.app.get("/memory/events")
-            async def get_memory_events():
-                """Get all memory events for debugging/testing."""
+            Args:
+                limit: Maximum number of events to return (default: 100, max: 1000)
+                session_id: Filter to specific session (optional)
+            """
+            limit = min(limit, 1000)  # Cap at 1000
+
+            if session_id:
+                events = await self.agent.memory.get_session_events(session_id)
+            else:
                 sessions = await self.agent.memory.list_sessions()
-                all_events = []
+                events = []
                 for sid in sessions:
-                    events = await self.agent.memory.get_session_events(sid)
-                    all_events.extend([e.to_dict() for e in events])
-                return JSONResponse(
-                    {
-                        "agent": self.agent.name,
-                        "events": all_events,
-                        "total": len(all_events),
-                    }
-                )
+                    sid_events = await self.agent.memory.get_session_events(sid)
+                    events.extend(sid_events)
 
-            @self.app.get("/memory/sessions")
-            async def get_memory_sessions():
-                """Get list of memory sessions."""
-                sessions = await self.agent.memory.list_sessions()
-                return JSONResponse(
-                    {
-                        "agent": self.agent.name,
-                        "sessions": sessions,
-                        "total": len(sessions),
-                    }
-                )
+            # Get most recent events up to limit
+            events = events[-limit:] if len(events) > limit else events
+
+            return JSONResponse(
+                {
+                    "agent": self.agent.name,
+                    "events": [e.to_dict() for e in events],
+                    "total": len(events),
+                }
+            )
+
+        @self.app.get("/memory/sessions")
+        async def get_memory_sessions():
+            """Get list of memory sessions."""
+            sessions = await self.agent.memory.list_sessions()
+            return JSONResponse(
+                {
+                    "agent": self.agent.name,
+                    "sessions": sessions,
+                    "total": len(sessions),
+                }
+            )
 
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: Request):
@@ -481,6 +494,17 @@ def create_agent_server(
                         )
 
     # Create agent with MCP clients and sub-agents
+    # Use NullMemory when memory is disabled
+    from agent.memory import LocalMemory, NullMemory
+
+    if settings.memory_enabled:
+        memory = LocalMemory(
+            max_sessions=settings.memory_max_sessions,
+            max_events_per_session=settings.memory_max_session_events,
+        )
+    else:
+        memory = NullMemory()
+
     agent = Agent(
         name=settings.agent_name,
         description=settings.agent_description,
@@ -490,12 +514,13 @@ def create_agent_server(
         sub_agents=sub_agents,
         max_steps=settings.agentic_loop_max_steps,
         memory_context_limit=settings.memory_context_limit,
+        memory=memory,
+        memory_enabled=settings.memory_enabled,
     )
 
     server = AgentServer(
         agent,
         port=settings.agent_port,
-        debug_memory_endpoints=settings.agent_debug_memory_endpoints,
         access_log=settings.agent_access_log,
     )
 

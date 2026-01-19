@@ -19,11 +19,13 @@ import httpx
 from dataclasses import dataclass
 
 from modelapi.client import ModelAPI
-from agent.memory import LocalMemory
+from agent.memory import LocalMemory, NullMemory
 from mcptools.client import MCPClient
 
 logger = logging.getLogger(__name__)
 
+# Type alias for memory implementations
+Memory = LocalMemory | NullMemory
 
 # System prompt templates for agentic loop
 TOOLS_INSTRUCTIONS = """
@@ -162,16 +164,17 @@ class Agent:
         model_api: ModelAPI,
         instructions: str = "You are a helpful agent",
         description: str = "Agent",
-        memory: Optional[LocalMemory] = None,
+        memory: Optional[Memory] = None,
         mcp_clients: Optional[List[MCPClient]] = None,
         sub_agents: Optional[List[RemoteAgent]] = None,
         max_steps: int = 5,
         memory_context_limit: int = 6,
+        memory_enabled: bool = True,
     ):
         self.name = name
         self.instructions = instructions
         self.model_api = model_api
-        self.memory = memory or LocalMemory()
+        self.memory: Memory = memory or LocalMemory()
         self.description = description
         self.mcp_clients = mcp_clients or []
         self.sub_agents: Dict[str, RemoteAgent] = {
@@ -179,6 +182,7 @@ class Agent:
         }
         self.max_steps = max_steps
         self.memory_context_limit = memory_context_limit
+        self.memory_enabled = memory_enabled
 
         logger.info(f"Agent initialized: {name}")
 
