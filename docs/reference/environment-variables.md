@@ -31,8 +31,16 @@ Complete reference for all environment variables used by the KAOS.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `AGENTIC_LOOP_MAX_STEPS` | Maximum reasoning iterations | `5` |
-| `AGENTIC_LOOP_ENABLE_TOOLS` | Enable tool calling | `true` |
-| `AGENTIC_LOOP_ENABLE_DELEGATION` | Enable agent delegation | `true` |
+
+### Memory Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MEMORY_ENABLED` | Enable/disable memory (use NullMemory when disabled) | `true` |
+| `MEMORY_TYPE` | Memory implementation type (only `local` supported) | `local` |
+| `MEMORY_CONTEXT_LIMIT` | Messages to include in delegation context | `6` |
+| `MEMORY_MAX_SESSIONS` | Maximum sessions to keep in memory | `1000` |
+| `MEMORY_MAX_SESSION_EVENTS` | Maximum events per session before eviction | `500` |
 
 ### Sub-Agent Configuration
 
@@ -51,11 +59,10 @@ Complete reference for all environment variables used by the KAOS.
 
 Note: Replace `-` with `_` and use uppercase for variable name (e.g., `worker-1` → `PEER_AGENT_WORKER_1_CARD_URL`).
 
-### Debug Configuration
+### Logging Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AGENT_DEBUG_MEMORY_ENDPOINTS` | Enable `/memory/*` endpoints | `false` |
 | `AGENT_ACCESS_LOG` | Enable uvicorn access logs | `false` |
 
 ## MCP Server Environment Variables
@@ -79,9 +86,12 @@ The operator automatically sets these variables on agent pods:
 | `metadata.name` | `AGENT_NAME` |
 | `config.description` | `AGENT_DESCRIPTION` |
 | `config.instructions` | `AGENT_INSTRUCTIONS` |
-| `config.agenticLoop.maxSteps` | `AGENTIC_LOOP_MAX_STEPS` |
-| `config.agenticLoop.enableTools` | `AGENTIC_LOOP_ENABLE_TOOLS` |
-| `config.agenticLoop.enableDelegation` | `AGENTIC_LOOP_ENABLE_DELEGATION` |
+| `config.reasoningLoopMaxSteps` | `AGENTIC_LOOP_MAX_STEPS` |
+| `config.memory.enabled` | `MEMORY_ENABLED` |
+| `config.memory.type` | `MEMORY_TYPE` |
+| `config.memory.contextLimit` | `MEMORY_CONTEXT_LIMIT` |
+| `config.memory.maxSessions` | `MEMORY_MAX_SESSIONS` |
+| `config.memory.maxSessionEvents` | `MEMORY_MAX_SESSION_EVENTS` |
 
 ### From Referenced Resources
 
@@ -90,12 +100,6 @@ The operator automatically sets these variables on agent pods:
 | ModelAPI.status.endpoint | `MODEL_API_URL` |
 | `agentNetwork.access` list | `PEER_AGENTS` |
 | Each peer agent service URL | `PEER_AGENT_<NAME>_CARD_URL` |
-
-### Always Set
-
-| Variable | Value |
-|----------|-------|
-| `AGENT_DEBUG_MEMORY_ENDPOINTS` | `true` |
 
 ## Custom Environment Variables
 
@@ -161,18 +165,20 @@ spec:
 Check environment variables on a running pod:
 
 ```bash
-kubectl exec -it deploy/my-agent -n my-namespace -- env | sort
+kubectl exec -it deploy/agent-my-agent -n my-namespace -- env | sort
 ```
 
 Expected output:
 ```
-AGENT_DEBUG_MEMORY_ENDPOINTS=true
 AGENT_DESCRIPTION=My agent
 AGENT_INSTRUCTIONS=You are helpful.
 AGENT_NAME=my-agent
-AGENTIC_LOOP_ENABLE_DELEGATION=true
-AGENTIC_LOOP_ENABLE_TOOLS=true
 AGENTIC_LOOP_MAX_STEPS=5
+MEMORY_ENABLED=true
+MEMORY_TYPE=local
+MEMORY_CONTEXT_LIMIT=6
+MEMORY_MAX_SESSIONS=1000
+MEMORY_MAX_SESSION_EVENTS=500
 MODEL_API_URL=http://modelapi.my-namespace.svc.cluster.local:8000
 MODEL_NAME=smollm2:135m
 PEER_AGENTS=worker-1,worker-2
