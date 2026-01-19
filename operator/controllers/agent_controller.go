@@ -423,29 +423,47 @@ func (r *AgentReconciler) constructEnvVars(agent *kaosv1alpha1.Agent, modelapi *
 		})
 	}
 
-	// Enable debug memory endpoints for testing (can be disabled via AGENT_DEBUG_MEMORY_ENDPOINTS=false)
-	hasDebugMemory := false
-	if agent.Spec.Config != nil {
-		for _, e := range agent.Spec.Config.Env {
-			if e.Name == "AGENT_DEBUG_MEMORY_ENDPOINTS" {
-				hasDebugMemory = true
-				break
-			}
-		}
-	}
-	if !hasDebugMemory {
-		env = append(env, corev1.EnvVar{
-			Name:  "AGENT_DEBUG_MEMORY_ENDPOINTS",
-			Value: "true", // Enable by default for testing
-		})
-	}
-
 	// Reasoning loop configuration
 	if agent.Spec.Config != nil && agent.Spec.Config.ReasoningLoopMaxSteps != nil {
 		env = append(env, corev1.EnvVar{
 			Name:  "AGENTIC_LOOP_MAX_STEPS",
 			Value: fmt.Sprintf("%d", *agent.Spec.Config.ReasoningLoopMaxSteps),
 		})
+	}
+
+	// Memory configuration
+	if agent.Spec.Config != nil && agent.Spec.Config.Memory != nil {
+		mem := agent.Spec.Config.Memory
+		if mem.Enabled != nil {
+			env = append(env, corev1.EnvVar{
+				Name:  "MEMORY_ENABLED",
+				Value: fmt.Sprintf("%t", *mem.Enabled),
+			})
+		}
+		if mem.Type != "" {
+			env = append(env, corev1.EnvVar{
+				Name:  "MEMORY_TYPE",
+				Value: mem.Type,
+			})
+		}
+		if mem.ContextLimit != nil {
+			env = append(env, corev1.EnvVar{
+				Name:  "MEMORY_CONTEXT_LIMIT",
+				Value: fmt.Sprintf("%d", *mem.ContextLimit),
+			})
+		}
+		if mem.MaxSessions != nil {
+			env = append(env, corev1.EnvVar{
+				Name:  "MEMORY_MAX_SESSIONS",
+				Value: fmt.Sprintf("%d", *mem.MaxSessions),
+			})
+		}
+		if mem.MaxSessionEvents != nil {
+			env = append(env, corev1.EnvVar{
+				Name:  "MEMORY_MAX_SESSION_EVENTS",
+				Value: fmt.Sprintf("%d", *mem.MaxSessionEvents),
+			})
+		}
 	}
 
 	// MCP Servers configuration
