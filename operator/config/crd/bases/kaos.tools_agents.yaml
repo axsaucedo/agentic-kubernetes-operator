@@ -236,6 +236,48 @@ spec:
                     description: Instructions are the system instructions for the
                       agent
                     type: string
+                  memory:
+                    description: Memory configures the agent's memory system
+                    properties:
+                      contextLimit:
+                        default: 6
+                        description: 'ContextLimit is the number of messages to include
+                          in delegation context (default: 6)'
+                        format: int32
+                        maximum: 100
+                        minimum: 1
+                        type: integer
+                      enabled:
+                        default: true
+                        description: |-
+                          Enabled controls whether memory is enabled (default: true)
+                          When disabled, NullMemory is used (no-op implementation)
+                        type: boolean
+                      maxSessionEvents:
+                        default: 500
+                        description: 'MaxSessionEvents is the maximum events per session
+                          before eviction (default: 500)'
+                        format: int32
+                        maximum: 10000
+                        minimum: 1
+                        type: integer
+                      maxSessions:
+                        default: 1000
+                        description: 'MaxSessions is the maximum number of sessions
+                          to keep in memory (default: 1000)'
+                        format: int32
+                        maximum: 100000
+                        minimum: 1
+                        type: integer
+                      type:
+                        default: local
+                        description: |-
+                          Type specifies the memory implementation (default: "local")
+                          Currently only "local" is supported
+                        enum:
+                        - local
+                        type: string
+                    type: object
                   reasoningLoopMaxSteps:
                     default: 5
                     description: ReasoningLoopMaxSteps is the maximum number of reasoning

@@ -20,6 +20,42 @@ type AgentNetworkConfig struct {
 
 // +kubebuilder:object:generate=true
 
+// +kubebuilder:object:generate=true
+
+// MemoryConfig defines memory settings for the agent
+type MemoryConfig struct {
+	// Enabled controls whether memory is enabled (default: true)
+	// When disabled, NullMemory is used (no-op implementation)
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Type specifies the memory implementation (default: "local")
+	// Currently only "local" is supported
+	// +kubebuilder:default="local"
+	// +kubebuilder:validation:Enum=local
+	Type string `json:"type,omitempty"`
+
+	// ContextLimit is the number of messages to include in delegation context (default: 6)
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:default=6
+	ContextLimit *int32 `json:"contextLimit,omitempty"`
+
+	// MaxSessions is the maximum number of sessions to keep in memory (default: 1000)
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100000
+	// +kubebuilder:default=1000
+	MaxSessions *int32 `json:"maxSessions,omitempty"`
+
+	// MaxSessionEvents is the maximum events per session before eviction (default: 500)
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10000
+	// +kubebuilder:default=500
+	MaxSessionEvents *int32 `json:"maxSessionEvents,omitempty"`
+}
+
+// +kubebuilder:object:generate=true
+
 // AgentConfig defines agent-specific configuration
 type AgentConfig struct {
 	// Description is a human-readable description of the agent
@@ -35,6 +71,10 @@ type AgentConfig struct {
 	// +kubebuilder:validation:Maximum=20
 	// +kubebuilder:default=5
 	ReasoningLoopMaxSteps *int32 `json:"reasoningLoopMaxSteps,omitempty"`
+
+	// Memory configures the agent's memory system
+	// +kubebuilder:validation:Optional
+	Memory *MemoryConfig `json:"memory,omitempty"`
 
 	// Env variables to pass to the agent runtime
 	// +kubebuilder:validation:Optional

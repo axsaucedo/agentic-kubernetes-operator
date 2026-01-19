@@ -255,9 +255,13 @@ When an agent delegates to a sub-agent:
 | `AGENT_SUB_AGENTS` | Direct format: `"name:url,name:url"` |
 | `PEER_AGENTS` | K8s format: `"worker-1,worker-2"` |
 | `PEER_AGENT_<NAME>_CARD_URL` | K8s format: individual URLs |
-| `AGENT_DEBUG_MEMORY_ENDPOINTS` | Enable `/memory/*` endpoints |
 | `AGENT_ACCESS_LOG` | Enable uvicorn access logs (default: false) |
 | `AGENTIC_LOOP_MAX_STEPS` | Max reasoning steps (default: 5) |
+| `MEMORY_ENABLED` | Enable/disable memory (default: true) |
+| `MEMORY_TYPE` | Memory type, only "local" supported (default: local) |
+| `MEMORY_CONTEXT_LIMIT` | Messages for delegation context (default: 6) |
+| `MEMORY_MAX_SESSIONS` | Max sessions to keep (default: 1000) |
+| `MEMORY_MAX_SESSION_EVENTS` | Max events per session (default: 500) |
 | `DEBUG_MOCK_RESPONSES` | JSON array of mock responses for testing |
 
 ### MCPServer Environment Variables
@@ -292,6 +296,12 @@ spec:
     description: "Coordinator agent"
     instructions: "You manage worker agents."
     reasoningLoopMaxSteps: 5  # Max reasoning loop iterations
+    memory:
+      enabled: true           # Enable/disable memory (default: true)
+      type: local             # Memory type (only local supported)
+      contextLimit: 6         # Messages for delegation context
+      maxSessions: 1000       # Max sessions to keep
+      maxSessionEvents: 500   # Max events per session
     env:
     - name: MODEL_NAME
       value: "ollama/smollm2:135m"

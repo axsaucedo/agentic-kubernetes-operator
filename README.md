@@ -37,12 +37,12 @@ KAOS is a Kubernetes-native framework for deploying and orchestrating AI agents 
 
 | Feature | Description |
 |---------|-------------|
-| **🖥️ CLI & Web UI** | Install and manage agents with `kaos` CLI and visual dashboard |
-| **🤖 Agent CRD** | Deploy agents as Kubernetes Custom Resources |
-| **🔧 MCP Tools** | Tool integration via the Model Context Protocol standard |
-| **🔗 Multi-Agent** | Hierarchical agent systems with automatic delegation |
-| **📡 OpenAI-Compatible** | All agents expose `/v1/chat/completions` endpoints |
-| **🎛️ Visual Dashboard** | Monitor agents, test chat, debug memory and tools |
+| ** CLI & Web UI** | Install and manage agents with `kaos` CLI and visual dashboard |
+| ** Agent CRD** | Deploy agents as Kubernetes Custom Resources |
+| ** MCP Tools** | Tool integration via the Model Context Protocol standard |
+| ** Multi-Agent** | Hierarchical agent systems with automatic delegation |
+| ** OpenAI-Compatible** | All agents expose `/v1/chat/completions` endpoints |
+| ** Visual Dashboard** | Monitor agents, test chat, debug memory and tools |
 
 ## Quick Start
 
@@ -185,12 +185,12 @@ flowchart TB
 
 | Resource | Link |
 |----------|------|
-| 📖 Full Documentation | [axsaucedo.github.io/kaos](https://axsaucedo.github.io/kaos) |
-| 🚀 Quick Start | [Getting Started](https://axsaucedo.github.io/kaos/getting-started/quickstart) |
-| 🖥️ CLI Guide | [CLI Commands](https://axsaucedo.github.io/kaos/cli/commands) |
-| 🎛️ Web UI | [UI Features](https://axsaucedo.github.io/kaos/ui/features) |
-| 🤖 Agent CRD | [Agent Reference](https://axsaucedo.github.io/kaos/operator/agent-crd) |
-| 🔗 Multi-Agent | [Multi-Agent Tutorial](https://axsaucedo.github.io/kaos/tutorials/multi-agent) |
+|  Full Documentation | [axsaucedo.github.io/kaos](https://axsaucedo.github.io/kaos) |
+|  Quick Start | [Getting Started](https://axsaucedo.github.io/kaos/getting-started/quickstart) |
+|  CLI Guide | [CLI Commands](https://axsaucedo.github.io/kaos/cli/commands) |
+|  Web UI | [UI Features](https://axsaucedo.github.io/kaos/ui/features) |
+|  Agent CRD | [Agent Reference](https://axsaucedo.github.io/kaos/operator/agent-crd) |
+|  Multi-Agent | [Multi-Agent Tutorial](https://axsaucedo.github.io/kaos/tutorials/multi-agent) |
 
 ## Development
 

@@ -92,7 +92,6 @@ var _ = Describe("Agent Controller", func() {
 		Expect(envMap["AGENT_DESCRIPTION"]).To(Equal("Test agent"))
 		Expect(envMap["AGENT_INSTRUCTIONS"]).To(Equal("You are a test agent."))
 		Expect(envMap["AGENTIC_LOOP_MAX_STEPS"]).To(Equal("10"))
-		Expect(envMap["AGENT_DEBUG_MEMORY_ENDPOINTS"]).To(Equal("true"))
 
 		// Verify Service is created (expose defaults to true)
 		service := &corev1.Service{}

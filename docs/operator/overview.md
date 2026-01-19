@@ -135,12 +135,14 @@ The operator translates CRD fields to container environment variables:
 | `config.instructions` | `AGENT_INSTRUCTIONS` |
 | ModelAPI.status.endpoint | `MODEL_API_URL` |
 | `config.env[MODEL_NAME]` | `MODEL_NAME` |
-| `config.agenticLoop.maxSteps` | `AGENTIC_LOOP_MAX_STEPS` |
-| `config.agenticLoop.enableTools` | `AGENTIC_LOOP_ENABLE_TOOLS` |
-| `config.agenticLoop.enableDelegation` | `AGENTIC_LOOP_ENABLE_DELEGATION` |
+| `config.reasoningLoopMaxSteps` | `AGENTIC_LOOP_MAX_STEPS` |
+| `config.memory.enabled` | `MEMORY_ENABLED` |
+| `config.memory.type` | `MEMORY_TYPE` |
+| `config.memory.contextLimit` | `MEMORY_CONTEXT_LIMIT` |
+| `config.memory.maxSessions` | `MEMORY_MAX_SESSIONS` |
+| `config.memory.maxSessionEvents` | `MEMORY_MAX_SESSION_EVENTS` |
 | `agentNetwork.access` | `PEER_AGENTS` |
 | Each peer agent | `PEER_AGENT_<NAME>_CARD_URL` |
-| Always set | `AGENT_DEBUG_MEMORY_ENDPOINTS=true` |
 
 ### ModelAPI Pod Environment
 

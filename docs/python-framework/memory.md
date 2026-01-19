@@ -2,6 +2,15 @@
 
 The memory system provides session management and event storage for agents. It tracks conversation history, tool calls, delegations, and enables debugging.
 
+## Memory Implementations
+
+KAOS provides two memory implementations:
+
+| Class | Description | Use Case |
+|-------|-------------|----------|
+| `LocalMemory` | Full in-memory storage with limits | Default, full functionality |
+| `NullMemory` | No-op implementation | Disabled memory, stateless agents |
+
 ## LocalMemory Class
 
 ```python
@@ -17,8 +26,47 @@ class LocalMemory:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `max_sessions` | 1000 | Maximum sessions before cleanup |
-| `max_events_per_session` | 500 | Maximum events per session |
+| `max_sessions` | 1000 | Maximum sessions before oldest are evicted |
+| `max_events_per_session` | 500 | Maximum events per session (uses deque for O(1) eviction) |
+
+## NullMemory Class
+
+No-op implementation for when memory is disabled:
+
+```python
+class NullMemory:
+    """All operations succeed silently without storing data."""
+```
+
+Use when:
+- Building stateless agents
+- Resource-constrained environments
+- Testing without memory overhead
+
+## Configuration
+
+### Via Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MEMORY_ENABLED` | `true` | Enable/disable memory |
+| `MEMORY_TYPE` | `local` | Memory type (only `local` supported) |
+| `MEMORY_CONTEXT_LIMIT` | `6` | Messages for delegation context |
+| `MEMORY_MAX_SESSIONS` | `1000` | Max sessions to keep |
+| `MEMORY_MAX_SESSION_EVENTS` | `500` | Max events per session |
+
+### Via Agent CRD
+
+```yaml
+spec:
+  config:
+    memory:
+      enabled: true
+      type: local
+      contextLimit: 6
+      maxSessions: 1000
+      maxSessionEvents: 500
+```
 
 ## Session Management
 
@@ -137,9 +185,10 @@ print(f"Cleaned {cleaned} sessions")
 
 ### Automatic Cleanup
 
-LocalMemory automatically:
-- Removes oldest 10% of sessions when `max_sessions` is exceeded
-- Keeps 80% of most recent events when `max_events_per_session` is exceeded
+LocalMemory uses a deque (double-ended queue) for event storage:
+- Events are automatically evicted when `max_events_per_session` is exceeded
+- Session cleanup removes oldest 10% when `max_sessions` is exceeded
+- O(1) append and eviction operations
 
 ## Statistics
 
@@ -199,17 +248,36 @@ response_event = self.memory.create_event("agent_response", content)
 await self.memory.add_event(session_id, response_event)
 ```
 
-## Debug Endpoints
+## Memory Endpoints
 
-When `AGENT_DEBUG_MEMORY_ENDPOINTS=true`, the server exposes:
+Memory endpoints are always enabled and available for debugging and the UI:
 
 ### GET /memory/events
 
-List all events across all sessions:
+List events with optional filtering:
 
 ```bash
+# Get last 100 events (default)
 curl http://localhost:8000/memory/events
+
+# Get last 50 events
+curl http://localhost:8000/memory/events?limit=50
+
+# Get events for specific session
+curl http://localhost:8000/memory/events?session_id=session_abc123
+
+# Combine filters
+curl http://localhost:8000/memory/events?session_id=session_abc123&limit=20
 ```
+
+**Query Parameters:**
+
+| Parameter | Default | Max | Description |
+|-----------|---------|-----|-------------|
+| `limit` | 100 | 1000 | Maximum events to return |
+| `session_id` | - | - | Filter to specific session |
+
+**Response:**
 
 ```json
 {

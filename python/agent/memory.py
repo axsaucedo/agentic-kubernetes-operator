@@ -3,13 +3,19 @@ Agent memory and session management.
 
 Simple, clean implementation similar to Google ADK's InMemorySessionService.
 Provides session management, event logging, and context building for agents.
+
+Two implementations:
+- LocalMemory: Full in-memory storage with session/event limits
+- NullMemory: No-op implementation when memory is disabled
 """
 
 import uuid
 import logging
-from typing import Dict, Any, List, Optional, Union
+from abc import ABC, abstractmethod
+from collections import deque
+from typing import Dict, Any, List, Optional, Union, Deque
 from datetime import datetime, timedelta, timezone
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +54,18 @@ class MemoryEvent:
 
 @dataclass
 class SessionMemory:
-    """Represents a complete session with all its events."""
+    """Represents a complete session with all its events.
+
+    Uses deque for automatic bounded storage - oldest events are automatically
+    evicted when max_events is reached.
+    """
 
     session_id: str
     user_id: str
     app_name: str
-    events: List[MemoryEvent]
-    created_at: datetime
-    updated_at: datetime
+    events: Deque[MemoryEvent] = field(default_factory=deque)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert session to dictionary for serialization."""
@@ -104,11 +114,12 @@ class LocalMemory:
             session_id = f"session_{uuid.uuid4().hex[:12]}"
 
         now = datetime.now(timezone.utc)
+        # Use deque with maxlen for automatic bounded event storage
         session = SessionMemory(
             session_id=session_id,
             user_id=user_id,
             app_name=app_name,
-            events=[],
+            events=deque(maxlen=self.max_events_per_session),
             created_at=now,
             updated_at=now,
         )
@@ -152,6 +163,9 @@ class LocalMemory:
     async def add_event(self, session_id: str, event: MemoryEvent) -> bool:
         """Add an event to a session.
 
+        Uses deque with maxlen for automatic O(1) bounded storage.
+        Oldest events are automatically evicted when limit is reached.
+
         Args:
             session_id: The session ID
             event: The event to add
@@ -164,9 +178,7 @@ class LocalMemory:
             logger.warning(f"Session {session_id} not found, event not added")
             return False
 
-        # Cleanup old events if needed
-        await self._cleanup_events_if_needed(session)
-
+        # Deque handles automatic eviction - no cleanup needed
         session.events.append(event)
         session.updated_at = datetime.now(timezone.utc)
         logger.debug(f"Added {event.event_type} event to session {session_id}")
@@ -188,7 +200,8 @@ class LocalMemory:
         if not session:
             return []
 
-        events = session.events
+        # Convert deque to list for consistent return type
+        events = list(session.events)
         if event_types:
             events = [e for e in events if e.event_type in event_types]
 
@@ -314,18 +327,79 @@ class LocalMemory:
 
             logger.info(f"Cleaned up {sessions_to_remove} oldest sessions to stay under limit")
 
-    async def _cleanup_events_if_needed(self, session: SessionMemory):
-        """Remove oldest events from session if we exceed the limit."""
-        if len(session.events) >= self.max_events_per_session:
-            # Keep most recent 80% of events
-            events_to_keep = int(self.max_events_per_session * 0.8)
-            removed_count = len(session.events) - events_to_keep
 
-            session.events = session.events[-events_to_keep:]
+class NullMemory:
+    """No-op memory implementation for when memory is disabled.
 
-            logger.debug(
-                f"Cleaned up {removed_count} oldest events from session {session.session_id}"
-            )
+    All methods succeed silently without storing any data.
+    This avoids adding conditional checks throughout the agent code.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """Accept any arguments for compatibility with LocalMemory signature."""
+        logger.info("NullMemory initialized (memory disabled)")
+
+    async def create_session(
+        self, app_name: str = "", user_id: str = "", session_id: Optional[str] = None
+    ) -> str:
+        """Return a constant session ID."""
+        return session_id or "null-session"
+
+    async def get_session(self, session_id: str) -> Optional[SessionMemory]:
+        """Always returns None."""
+        return None
+
+    async def get_or_create_session(
+        self, session_id: str, app_name: str = "agent", user_id: str = "user"
+    ) -> str:
+        """Return the provided session ID."""
+        return session_id
+
+    async def add_event(self, session_id: str, event: Optional[MemoryEvent]) -> bool:
+        """Silently accept and discard events."""
+        return True
+
+    async def get_session_events(
+        self, session_id: str, event_types: Optional[List[str]] = None
+    ) -> List[MemoryEvent]:
+        """Always returns empty list."""
+        return []
+
+    async def build_conversation_context(self, session_id: str, max_events: int = 20) -> str:
+        """Always returns empty string."""
+        return ""
+
+    def create_event(
+        self, event_type: str, content: Any, metadata: Optional[Dict[str, Any]] = None
+    ) -> MemoryEvent:
+        """Create a memory event (even though it won't be stored)."""
+        return MemoryEvent(
+            event_id=f"null_{uuid.uuid4().hex[:8]}",
+            timestamp=datetime.now(timezone.utc),
+            event_type=event_type,
+            content=content,
+            metadata=metadata or {},
+        )
+
+    async def list_sessions(self, user_id: Optional[str] = None) -> List[str]:
+        """Always returns empty list."""
+        return []
+
+    async def delete_session(self, session_id: str) -> bool:
+        """Always returns True."""
+        return True
+
+    async def get_memory_stats(self) -> Dict[str, int]:
+        """Return zero stats."""
+        return {
+            "total_sessions": 0,
+            "total_events": 0,
+            "avg_events_per_session": 0,
+        }
+
+    async def cleanup_old_sessions(self, max_age_hours: int = 24) -> int:
+        """No-op cleanup."""
+        return 0
 
 
 # Backwards compatibility - this is the main class to use
