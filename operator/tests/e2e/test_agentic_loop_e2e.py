@@ -378,6 +378,7 @@ async def test_wait_for_dependencies_false(test_namespace: str, shared_modelapi:
         "metadata": {"name": agent_name, "namespace": test_namespace},
         "spec": {
             "modelAPI": shared_modelapi,
+            "model": "ollama/smollm2:135m",  # Required field
             "mcpServers": [],
             "waitForDependencies": False,
             "config": {

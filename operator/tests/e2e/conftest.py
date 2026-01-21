@@ -317,9 +317,9 @@ def shared_modelapi(shared_namespace: str) -> Generator[str, None, None]:
     create_custom_resource(modelapi_spec, shared_namespace)
     wait_for_deployment(shared_namespace, f"modelapi-{name}", timeout=120)
 
-    # Wait for HTTPRoute to be ready
+    # Wait for HTTPRoute to be ready (LiteLLM uses /health/liveliness)
     url = gateway_url(shared_namespace, "modelapi", name)
-    wait_for_resource_ready(url, max_wait=30)
+    wait_for_resource_ready(url, max_wait=60, health_path="/health/liveliness")
     yield name
 
 
