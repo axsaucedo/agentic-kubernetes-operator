@@ -608,11 +608,13 @@ func (r *AgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // validateAgentModel checks if the agent's model is supported by the ModelAPI
 func (r *AgentReconciler) validateAgentModel(agent *kaosv1alpha1.Agent, modelapi *kaosv1alpha1.ModelAPI) error {
 	agentModel := agent.Spec.Model
-	supportedModels := modelapi.Status.SupportedModels
 
-	// If no supported models are defined yet, allow (ModelAPI may still be initializing)
-	if len(supportedModels) == 0 {
-		return nil
+	// Get supported models from spec (models is required with MinItems=1)
+	var supportedModels []string
+	if modelapi.Spec.Mode == kaosv1alpha1.ModelAPIModeProxy && modelapi.Spec.ProxyConfig != nil {
+		supportedModels = modelapi.Spec.ProxyConfig.Models
+	} else if modelapi.Spec.Mode == kaosv1alpha1.ModelAPIModeHosted && modelapi.Spec.HostedConfig != nil {
+		supportedModels = []string{modelapi.Spec.HostedConfig.Model}
 	}
 
 	for _, pattern := range supportedModels {

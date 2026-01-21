@@ -8991,14 +8991,6 @@ spec:
               ready:
                 description: Ready indicates if the model API is ready
                 type: boolean
-              supportedModels:
-                description: |-
-                  SupportedModels is the list of model patterns supported by this ModelAPI
-                  For Proxy mode: copied from spec.proxyConfig.models
-                  For Hosted mode: contains the single model from hostedConfig.model
-                items:
-                  type: string
-                type: array
             type: object
         type: object
     served: true

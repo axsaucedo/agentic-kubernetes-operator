@@ -239,15 +239,6 @@ func (r *ModelAPIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	modelapi.Status.Endpoint = fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", serviceName, modelapi.Namespace, port)
 
-	// Populate SupportedModels in status
-	// For Proxy mode: copy from spec.proxyConfig.models
-	// For Hosted mode: use hostedConfig.model
-	if modelapi.Spec.Mode == kaosv1alpha1.ModelAPIModeProxy && modelapi.Spec.ProxyConfig != nil {
-		modelapi.Status.SupportedModels = modelapi.Spec.ProxyConfig.Models
-	} else if modelapi.Spec.Mode == kaosv1alpha1.ModelAPIModeHosted && modelapi.Spec.HostedConfig != nil {
-		modelapi.Status.SupportedModels = []string{modelapi.Spec.HostedConfig.Model}
-	}
-
 	// Create HTTPRoute if Gateway API is enabled
 	timeout := ""
 	if modelapi.Spec.GatewayRoute != nil && modelapi.Spec.GatewayRoute.Timeout != "" {
@@ -590,8 +581,8 @@ func (r *ModelAPIReconciler) constructConfigMap(modelapi *kaosv1alpha1.ModelAPI)
 		if modelapi.Spec.ProxyConfig.ConfigYaml != nil && modelapi.Spec.ProxyConfig.ConfigYaml.FromString != "" {
 			// Use user-provided configYaml directly
 			configYaml = modelapi.Spec.ProxyConfig.ConfigYaml.FromString
-		} else if len(modelapi.Spec.ProxyConfig.Models) > 0 {
-			// Generate config from models list
+		} else {
+			// Generate config from models list (models is required with MinItems=1)
 			configYaml = r.generateLiteLLMConfig(modelapi.Spec.ProxyConfig)
 		}
 	}

@@ -138,12 +138,6 @@ type ModelAPIStatus struct {
 	// Message provides additional status information
 	Message string `json:"message,omitempty"`
 
-	// SupportedModels is the list of model patterns supported by this ModelAPI
-	// For Proxy mode: copied from spec.proxyConfig.models
-	// For Hosted mode: contains the single model from hostedConfig.model
-	// +kubebuilder:validation:Optional
-	SupportedModels []string `json:"supportedModels,omitempty"`
-
 	// Deployment contains status information from the underlying Deployment
 	// +kubebuilder:validation:Optional
 	Deployment *DeploymentStatus `json:"deployment,omitempty"`

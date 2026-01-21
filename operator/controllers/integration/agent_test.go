@@ -432,12 +432,14 @@ var _ = Describe("Agent Controller", func() {
 			k8sClient.Delete(ctx, modelAPI)
 		}()
 
-		// Wait for ModelAPI to have supportedModels in status
-		Eventually(func() int {
+		// Wait for ModelAPI to have endpoint (reconcile has processed it)
+		Eventually(func() bool {
 			updated := &kaosv1alpha1.ModelAPI{}
-			k8sClient.Get(ctx, types.NamespacedName{Name: modelAPIName, Namespace: namespace}, updated)
-			return len(updated.Status.SupportedModels)
-		}, timeout, interval).Should(Equal(2))
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: modelAPIName, Namespace: namespace}, updated); err != nil {
+				return false
+			}
+			return updated.Status.Endpoint != ""
+		}, timeout, interval).Should(BeTrue())
 
 		// Create Agent with unsupported model
 		agent := &kaosv1alpha1.Agent{
@@ -494,12 +496,14 @@ var _ = Describe("Agent Controller", func() {
 			k8sClient.Delete(ctx, modelAPI)
 		}()
 
-		// Wait for ModelAPI to have supportedModels in status
-		Eventually(func() int {
+		// Wait for ModelAPI to have endpoint (reconcile has processed it)
+		Eventually(func() bool {
 			updated := &kaosv1alpha1.ModelAPI{}
-			k8sClient.Get(ctx, types.NamespacedName{Name: modelAPIName, Namespace: namespace}, updated)
-			return len(updated.Status.SupportedModels)
-		}, timeout, interval).Should(Equal(1))
+			if err := k8sClient.Get(ctx, types.NamespacedName{Name: modelAPIName, Namespace: namespace}, updated); err != nil {
+				return false
+			}
+			return updated.Status.Endpoint != ""
+		}, timeout, interval).Should(BeTrue())
 
 		// Create Agent with model matching wildcard
 		agent := &kaosv1alpha1.Agent{

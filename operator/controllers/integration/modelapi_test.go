@@ -97,9 +97,7 @@ var _ = Describe("ModelAPI Controller", func() {
 			if err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, updated); err != nil {
 				return false
 			}
-			return containsSubstring(updated.Status.Endpoint, fmt.Sprintf("modelapi-%s", name)) &&
-				len(updated.Status.SupportedModels) == 1 &&
-				updated.Status.SupportedModels[0] == "*"
+			return containsSubstring(updated.Status.Endpoint, fmt.Sprintf("modelapi-%s", name))
 		}, timeout, interval).Should(BeTrue())
 	})
 
@@ -132,13 +130,6 @@ var _ = Describe("ModelAPI Controller", func() {
 		}, timeout, interval).Should(Succeed())
 		Expect(configMap.Data["config.yaml"]).To(ContainSubstring("model_name: \"openai/gpt-4\""))
 		Expect(configMap.Data["config.yaml"]).To(ContainSubstring("model_name: \"anthropic/claude-3\""))
-
-		// Verify supportedModels in status
-		Eventually(func() int {
-			updated := &kaosv1alpha1.ModelAPI{}
-			k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, updated)
-			return len(updated.Status.SupportedModels)
-		}, timeout, interval).Should(Equal(2))
 	})
 
 	It("should inject PROXY_API_KEY from direct value", func() {
@@ -287,13 +278,6 @@ var _ = Describe("ModelAPI Controller", func() {
 			}, service)
 		}, timeout, interval).Should(Succeed())
 		Expect(service.Spec.Ports[0].Port).To(Equal(int32(11434)))
-
-		// Verify supportedModels in status for Hosted mode
-		Eventually(func() []string {
-			updated := &kaosv1alpha1.ModelAPI{}
-			k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, updated)
-			return updated.Status.SupportedModels
-		}, timeout, interval).Should(Equal([]string{"smollm2:135m"}))
 	})
 
 	It("should trigger rolling update when model is changed in Hosted mode", func() {
