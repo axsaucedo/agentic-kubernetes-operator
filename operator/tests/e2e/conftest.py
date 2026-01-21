@@ -334,7 +334,7 @@ def create_modelapi_resource(
         "spec": {
             "mode": "Proxy",
             "proxyConfig": {
-                "model": "gpt-3.5-turbo",
+                "models": ["gpt-3.5-turbo"],
                 "env": [
                     {"name": "OPENAI_API_KEY", "value": "sk-test"},
                     {"name": "LITELLM_LOG", "value": "WARN"},
@@ -383,8 +383,8 @@ def create_modelapi_proxy_ollama_resource(
         "spec": {
             "mode": "Proxy",
             "proxyConfig": {
+                "models": ["ollama/smollm2:135m"],
                 "apiBase": "http://host.docker.internal:11434",
-                "model": "ollama/smollm2:135m",
                 "env": [
                     {"name": "OPENAI_API_KEY", "value": "sk-test"},
                     {"name": "LITELLM_LOG", "value": "WARN"},
@@ -432,7 +432,6 @@ def create_agent_resource(
         "instructions": "You are a helpful test assistant.",
         "env": [
             {"name": "AGENT_LOG_LEVEL", "value": "INFO"},
-            {"name": "MODEL_NAME", "value": model_name},
         ],
     }
 
@@ -445,6 +444,7 @@ def create_agent_resource(
         "metadata": {"name": agent_name, "namespace": namespace},
         "spec": {
             "modelAPI": modelapi_name,
+            "model": model_name,  # Required: model to use
             "mcpServers": mcpserver_names,
             "config": config,
             "agentNetwork": {"access": sub_agents or []},
