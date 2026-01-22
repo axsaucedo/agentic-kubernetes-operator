@@ -14,6 +14,11 @@ on:
         description: 'Image tag override (default: from VERSION file)'
         required: false
 
+# Grant permissions needed by reusable workflows
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   # Read version from VERSION file
   read-version:

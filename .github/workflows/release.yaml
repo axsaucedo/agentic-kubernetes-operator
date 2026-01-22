@@ -4,6 +4,14 @@ on:
   push:
     tags: ['v*']
 
+# Grant permissions needed by all jobs including reusable workflows
+permissions:
+  contents: write
+  packages: write
+  pages: write
+  id-token: write
+  pull-requests: write
+
 jobs:
   # Validate tag format
   validate:
