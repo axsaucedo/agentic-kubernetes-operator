@@ -140,3 +140,13 @@ Keeping development documentation at `/kaos/dev/` allows:
 - Users to see upcoming features
 - Contributors to reference latest docs
 - Clear distinction between stable and in-progress content
+
+## Repository Settings Requirements
+
+For the automated version bump PR to work, ensure these settings are enabled in your GitHub repository:
+
+1. Go to **Settings** → **Actions** → **General**
+2. Under "Workflow permissions", select **Read and write permissions**
+3. Check **Allow GitHub Actions to create and approve pull requests**
+
+Without these settings, the bump-version job will fail with "GitHub Actions is not permitted to create or approve pull requests".
