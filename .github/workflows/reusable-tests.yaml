@@ -34,12 +34,18 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version-file: operator/go.mod
+          cache-dependency-path: operator/go.sum
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Install Go tools
+        run: |
+          go install sigs.k8s.io/controller-tools/cmd/controller-gen@latest
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
       - name: Run Go tests
         working-directory: operator
