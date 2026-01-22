@@ -1,0 +1,407 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  REGISTRY: docker.io
+  OPERATOR_IMAGE: axsauze/kaos-operator
+  AGENT_IMAGE: axsauze/kaos-agent
+
+jobs:
+  # Validate tag and run tests
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.parse.outputs.version }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version format: $VERSION (expected X.Y.Z)"
+            exit 1
+          fi
+          echo "✓ Version format valid: $VERSION"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Go tests
+        working-directory: operator
+        run: |
+          make test-unit
+
+      - name: Install Python dependencies
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Python tests
+        working-directory: python
+        run: |
+          python -m pytest tests/ -v
+
+  # Build operator image on native runners for each platform
+  build-operator:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.OPERATOR_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./operator
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.OPERATOR_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=operator-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,scope=operator-${{ env.PLATFORM_PAIR }},mode=max
+          github-token: ${{ github.token }}
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests/operator
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/operator/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-operator-digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/operator/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Build agent image on native runners for each platform
+  build-agent:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.AGENT_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./python
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.AGENT_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=agent-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,scope=agent-${{ env.PLATFORM_PAIR }},mode=max
+          github-token: ${{ github.token }}
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests/agent
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/agent/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-agent-digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/agent/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge operator manifests from all platforms
+  merge-operator:
+    runs-on: ubuntu-latest
+    needs: [validate, build-operator]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests/operator
+          pattern: release-operator-digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.OPERATOR_IMAGE }}
+          tags: |
+            type=raw,value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests/operator
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.OPERATOR_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.OPERATOR_IMAGE }}:${{ needs.validate.outputs.version }}
+
+  # Merge agent manifests from all platforms
+  merge-agent:
+    runs-on: ubuntu-latest
+    needs: [validate, build-agent]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests/agent
+          pattern: release-agent-digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.AGENT_IMAGE }}
+          tags: |
+            type=raw,value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest
+
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests/agent
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.AGENT_IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.AGENT_IMAGE }}:${{ needs.validate.outputs.version }}
+
+  # Package Helm chart
+  build-helm:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Package chart
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          mkdir -p ./charts
+          helm package operator/chart \
+            --version "$VERSION" \
+            --app-version "$VERSION" \
+            -d ./charts
+          echo "Packaged chart: kaos-operator-${VERSION}.tgz"
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: ./charts/*.tgz
+          if-no-files-found: error
+
+  # Create GitHub Release
+  create-release:
+    needs: [validate, merge-operator, merge-agent, build-helm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Helm chart
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: ./charts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ needs.validate.outputs.version }}
+          generate_release_notes: true
+          files: |
+            ./charts/*.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Bump version on main after release
+  bump-version:
+    needs: [validate, create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Calculate next dev version
+        id: next
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_DEV="${MAJOR}.${MINOR}.${NEXT_PATCH}-dev"
+          PYTHON_DEV="${MAJOR}.${MINOR}.${NEXT_PATCH}.dev0"
+          echo "next_dev=$NEXT_DEV" >> $GITHUB_OUTPUT
+          echo "python_dev=$PYTHON_DEV" >> $GITHUB_OUTPUT
+          echo "Next dev version: $NEXT_DEV"
+          echo "Python dev version: $PYTHON_DEV"
+
+      - name: Update version files
+        run: |
+          NEXT_DEV=${{ steps.next.outputs.next_dev }}
+          PYTHON_DEV=${{ steps.next.outputs.python_dev }}
+
+          # Update VERSION file
+          echo "$NEXT_DEV" > VERSION
+
+          # Update Python versions (PEP 440 compliant)
+          sed -i "s/^version = .*/version = \"$PYTHON_DEV\"/" python/pyproject.toml
+          sed -i "s/^version = .*/version = \"$PYTHON_DEV\"/" kaos-cli/pyproject.toml
+
+          # Update Helm chart
+          sed -i "s/^version: .*/version: $NEXT_DEV/" operator/chart/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: \"$NEXT_DEV\"/" operator/chart/Chart.yaml
+
+          echo "Updated files:"
+          cat VERSION
+          grep "^version" python/pyproject.toml
+          grep "^version" kaos-cli/pyproject.toml
+          grep "^version:\|^appVersion:" operator/chart/Chart.yaml
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: bump/${{ steps.next.outputs.next_dev }}
+          title: "chore: bump version to ${{ steps.next.outputs.next_dev }}"
+          body: |
+            Automated version bump after release v${{ needs.validate.outputs.version }}
+
+            ## Changes
+            - `VERSION` → `${{ steps.next.outputs.next_dev }}`
+            - Python packages → `${{ steps.next.outputs.python_dev }}`
+            - Helm chart → `${{ steps.next.outputs.next_dev }}`
+
+            ## What's Next
+            This PR should be merged to prepare for the next development cycle.
+          commit-message: "chore: bump version to ${{ steps.next.outputs.next_dev }}"
+          delete-branch: true
+          labels: |
+            automated
+            version-bump
