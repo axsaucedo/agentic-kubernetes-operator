@@ -1,4 +1,4 @@
-name: Docker Build and Push
+name: Dev Build and Push
 
 on:
   push:
@@ -6,13 +6,13 @@ on:
     paths:
       - 'operator/**'
       - 'python/**'
-      - '.github/workflows/docker-push.yaml'
+      - 'VERSION'
+      - '.github/workflows/dev-build.yaml'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag (default: latest)'
+        description: 'Image tag override (default: from VERSION file)'
         required: false
-        default: 'latest'
 
 env:
   REGISTRY: docker.io
@@ -20,8 +20,28 @@ env:
   AGENT_IMAGE: axsauze/kaos-agent
 
 jobs:
+  # Read version from VERSION file
+  read-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Read VERSION
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '\n')
+          # Allow workflow_dispatch override
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+
   # Build operator image on native runners for each platform
   build-operator:
+    needs: read-version
     strategy:
       fail-fast: false
       matrix:
@@ -155,7 +175,7 @@ jobs:
   # Merge operator manifests from all platforms
   merge-operator:
     runs-on: ubuntu-latest
-    needs: build-operator
+    needs: [read-version, build-operator]
     permissions:
       contents: read
       packages: write
@@ -183,8 +203,8 @@ jobs:
           images: ${{ env.OPERATOR_IMAGE }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.read-version.outputs.version }}
             type=sha,prefix=
-            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests/operator
@@ -199,7 +219,7 @@ jobs:
   # Merge agent manifests from all platforms
   merge-agent:
     runs-on: ubuntu-latest
-    needs: build-agent
+    needs: [read-version, build-agent]
     permissions:
       contents: read
       packages: write
@@ -227,8 +247,8 @@ jobs:
           images: ${{ env.AGENT_IMAGE }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.read-version.outputs.version }}
             type=sha,prefix=
-            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests/agent
