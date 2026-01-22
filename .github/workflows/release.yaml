@@ -45,7 +45,7 @@ jobs:
     uses: ./.github/workflows/reusable-tests.yaml
     with:
       run-unit: true
-      run-e2e: false  # Temporarily disabled for testing release workflow
+      run-e2e: true
 
   # Build and push images using reusable workflow
   build-images:
@@ -217,7 +217,8 @@ jobs:
 
   # Create GitHub Release
   create-release:
-    needs: [validate, build-images, build-helm, publish-python, publish-docs]
+    needs: [validate, build-images, build-helm, publish-docs]
+    if: always() && needs.validate.result == 'success' && needs.build-images.result == 'success' && needs.build-helm.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
