@@ -17,6 +17,7 @@ echo "Installing Envoy Gateway (${ENVOY_GATEWAY_VERSION})..."
 helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
   --version "${ENVOY_GATEWAY_VERSION}" \
   --namespace envoy-gateway-system --create-namespace \
+  --skip-crds \
   --wait --timeout 120s
 
 echo "Creating GatewayClass..."
@@ -39,6 +40,14 @@ for i in {1..30}; do
   echo "Waiting for GatewayClass... (attempt $i/30)"
   sleep 2
 done
+
+# Verify GatewayClass is accepted
+STATUS=$(kubectl get gatewayclass envoy-gateway -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null || echo "Unknown")
+if [ "$STATUS" != "True" ]; then
+  echo "ERROR: GatewayClass not accepted after 60 seconds"
+  kubectl get gatewayclass envoy-gateway -o yaml
+  exit 1
+fi
 
 echo ""
 echo "Gateway API and Envoy Gateway installed successfully!"
