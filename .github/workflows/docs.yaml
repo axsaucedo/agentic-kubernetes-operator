@@ -1,4 +1,4 @@
-name: Deploy Documentation
+name: Deploy Dev Documentation
 
 on:
   push:
@@ -6,65 +6,36 @@ on:
     paths:
       - 'docs/**'
       - 'operator/chart/**'
+      - 'VERSION'
       - '.github/workflows/docs.yaml'
+      - '.github/workflows/reusable-docs.yaml'
   workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  build:
+  read-version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.14.0
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Install dependencies
-        working-directory: docs
-        run: npm install
-
-      - name: Build with VitePress
-        working-directory: docs
-        run: npm run build
-
-      - name: Package Helm chart
+      - name: Read VERSION
+        id: version
         run: |
-          helm package operator/chart -d docs/.vitepress/dist/charts
-          helm repo index docs/.vitepress/dist/charts --url https://axsaucedo.github.io/kaos/charts
+          VERSION=$(cat VERSION | tr -d '\n')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/.vitepress/dist
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+  deploy-docs:
+    needs: read-version
+    uses: ./.github/workflows/reusable-docs.yaml
+    with:
+      version: dev
+      base-path: /kaos/dev/
+      deploy-path: dev
+      update-latest: false
+      package-helm: true
+      helm-version: ${{ needs.read-version.outputs.version }}

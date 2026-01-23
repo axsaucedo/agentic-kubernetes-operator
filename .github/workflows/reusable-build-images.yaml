@@ -1,18 +1,27 @@
-name: Docker Build and Push
+name: Build and Push Images
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'operator/**'
-      - 'python/**'
-      - '.github/workflows/docker-push.yaml'
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      tag:
-        description: 'Image tag (default: latest)'
+      version:
+        description: 'Version tag for images'
+        required: true
+        type: string
+      push-latest:
+        description: 'Also tag as latest'
         required: false
-        default: 'latest'
+        type: boolean
+        default: false
+      artifact-prefix:
+        description: 'Prefix for artifact names to avoid conflicts'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
 
 env:
   REGISTRY: docker.io
@@ -34,10 +43,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      # Export digests for manifest merge
-      digest-amd64: ${{ steps.build.outputs.digest }}
-      digest-arm64: ${{ steps.build.outputs.digest }}
     steps:
       - name: Prepare platform pair
         run: |
@@ -83,7 +88,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: operator-digests-${{ env.PLATFORM_PAIR }}
+          name: ${{ inputs.artifact-prefix }}operator-digests-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/operator/*
           if-no-files-found: error
           retention-days: 1
@@ -147,7 +152,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: agent-digests-${{ env.PLATFORM_PAIR }}
+          name: ${{ inputs.artifact-prefix }}agent-digests-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/agent/*
           if-no-files-found: error
           retention-days: 1
@@ -164,7 +169,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests/operator
-          pattern: operator-digests-*
+          pattern: ${{ inputs.artifact-prefix }}operator-digests-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -182,9 +187,9 @@ jobs:
         with:
           images: ${{ env.OPERATOR_IMAGE }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ inputs.version }}
+            type=raw,value=latest,enable=${{ inputs.push-latest }}
             type=sha,prefix=
-            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests/operator
@@ -194,7 +199,7 @@ jobs:
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.OPERATOR_IMAGE }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.OPERATOR_IMAGE }}:${{ inputs.version }}
 
   # Merge agent manifests from all platforms
   merge-agent:
@@ -208,7 +213,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests/agent
-          pattern: agent-digests-*
+          pattern: ${{ inputs.artifact-prefix }}agent-digests-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -226,9 +231,9 @@ jobs:
         with:
           images: ${{ env.AGENT_IMAGE }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ inputs.version }}
+            type=raw,value=latest,enable=${{ inputs.push-latest }}
             type=sha,prefix=
-            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests/agent
@@ -238,4 +243,4 @@ jobs:
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ env.AGENT_IMAGE }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.AGENT_IMAGE }}:${{ inputs.version }}

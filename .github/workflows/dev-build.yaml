@@ -1,0 +1,52 @@
+name: Dev Build and Push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operator/**'
+      - 'python/**'
+      - 'VERSION'
+      - '.github/workflows/dev-build.yaml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag override (default: from VERSION file)'
+        required: false
+
+# Grant permissions needed by reusable workflows
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Read version from VERSION file
+  read-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Read VERSION
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '\n')
+          # Allow workflow_dispatch override
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            VERSION="${{ github.event.inputs.tag }}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
+
+  # Build and push images using reusable workflow
+  build-images:
+    needs: read-version
+    uses: ./.github/workflows/reusable-build-images.yaml
+    with:
+      version: ${{ needs.read-version.outputs.version }}
+      push-latest: ${{ github.ref == 'refs/heads/main' }}
+      artifact-prefix: 'dev-'
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

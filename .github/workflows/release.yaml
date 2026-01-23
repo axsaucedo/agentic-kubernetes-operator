@@ -1,0 +1,236 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# Grant permissions needed by all jobs including reusable workflows
+permissions:
+  contents: write
+  packages: write
+  pages: write
+  id-token: write
+  pull-requests: write
+
+jobs:
+  # Validate tag format
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.parse.outputs.version }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version format: $VERSION (expected X.Y.Z)"
+            exit 1
+          fi
+          echo "✓ Version format valid: $VERSION"
+
+  # Run all tests (unit + E2E) using reusable workflow
+  tests:
+    needs: validate
+    uses: ./.github/workflows/reusable-tests.yaml
+    with:
+      run-unit: true
+      run-e2e: true
+
+  # Build and push images using reusable workflow
+  build-images:
+    needs: [validate, tests]
+    uses: ./.github/workflows/reusable-build-images.yaml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      push-latest: true
+      artifact-prefix: 'release-'
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  # Package Helm chart
+  build-helm:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Package chart
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          mkdir -p ./charts
+          helm package operator/chart \
+            --version "$VERSION" \
+            --app-version "$VERSION" \
+            -d ./charts
+          echo "Packaged chart: kaos-operator-${VERSION}.tgz"
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: ./charts/*.tgz
+          if-no-files-found: error
+
+  # Publish kaos-cli to PyPI
+  publish-python:
+    needs: [validate, tests]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/kaos-cli/
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build
+      - name: Update version and build kaos-cli
+        working-directory: kaos-cli
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: kaos-cli/dist/
+
+  # Build and deploy versioned documentation using reusable workflow
+  publish-docs:
+    needs: validate
+    uses: ./.github/workflows/reusable-docs.yaml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      base-path: /kaos/v${{ needs.validate.outputs.version }}/
+      deploy-path: v${{ needs.validate.outputs.version }}
+      update-latest: true
+      package-helm: false
+
+  # Create GitHub Release
+  create-release:
+    needs: [validate, build-images, build-helm, publish-docs]
+    if: always() && needs.validate.result == 'success' && needs.build-images.result == 'success' && needs.build-helm.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Helm chart
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: ./charts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ needs.validate.outputs.version }}
+          generate_release_notes: true
+          files: |
+            ./charts/*.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Bump version on main after release
+  bump-version:
+    needs: [validate, create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Calculate next dev version
+        id: next
+        run: |
+          VERSION=${{ needs.validate.outputs.version }}
+          MAJOR=$(echo $VERSION | cut -d. -f1)
+          MINOR=$(echo $VERSION | cut -d. -f2)
+          PATCH=$(echo $VERSION | cut -d. -f3)
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_DEV="${MAJOR}.${MINOR}.${NEXT_PATCH}-dev"
+          PYTHON_DEV="${MAJOR}.${MINOR}.${NEXT_PATCH}.dev0"
+          echo "next_dev=$NEXT_DEV" >> $GITHUB_OUTPUT
+          echo "python_dev=$PYTHON_DEV" >> $GITHUB_OUTPUT
+          echo "Next dev version: $NEXT_DEV"
+          echo "Python dev version: $PYTHON_DEV"
+
+      - name: Update version files
+        run: |
+          NEXT_DEV=${{ steps.next.outputs.next_dev }}
+          PYTHON_DEV=${{ steps.next.outputs.python_dev }}
+
+          # Update VERSION file
+          echo "$NEXT_DEV" > VERSION
+
+          # Update Python versions (PEP 440 compliant)
+          sed -i "s/^version = .*/version = \"$PYTHON_DEV\"/" python/pyproject.toml
+          sed -i "s/^version = .*/version = \"$PYTHON_DEV\"/" kaos-cli/pyproject.toml
+
+          # Update Helm chart
+          sed -i "s/^version: .*/version: $NEXT_DEV/" operator/chart/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: \"$NEXT_DEV\"/" operator/chart/Chart.yaml
+
+          echo "Updated files:"
+          cat VERSION
+          grep "^version" python/pyproject.toml
+          grep "^version" kaos-cli/pyproject.toml
+          grep "^version:\|^appVersion:" operator/chart/Chart.yaml
+
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: bump/${{ steps.next.outputs.next_dev }}
+          title: "chore: bump version to ${{ steps.next.outputs.next_dev }}"
+          body: |
+            Automated version bump after release v${{ needs.validate.outputs.version }}
+
+            ## Changes
+            - `VERSION` → `${{ steps.next.outputs.next_dev }}`
+            - Python packages → `${{ steps.next.outputs.python_dev }}`
+            - Helm chart → `${{ steps.next.outputs.next_dev }}`
+
+            ## What's Next
+            This PR should be merged to prepare for the next development cycle.
+          commit-message: "chore: bump version to ${{ steps.next.outputs.next_dev }}"
+          delete-branch: true
+          labels: |
+            automated
+            version-bump
+
+      - name: Enable auto-merge for bump PR
+        if: steps.cpr.outputs.pull-request-number
+        run: gh pr merge --auto --squash "${{ steps.cpr.outputs.pull-request-number }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
