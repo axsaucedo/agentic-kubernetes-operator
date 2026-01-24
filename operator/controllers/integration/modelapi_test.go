@@ -389,7 +389,8 @@ var _ = Describe("ModelAPI Controller", func() {
 			return k8sClient.Update(ctx, current)
 		}, timeout, interval).Should(Succeed())
 
-		// Verify configmap is updated with new models
+		// Verify configmap is updated - with wildcards, it generates passthrough mode
+		// with model_name: "*" and model: "*" (not the specific patterns)
 		Eventually(func() bool {
 			if err := k8sClient.Get(ctx, types.NamespacedName{
 				Name:      fmt.Sprintf("litellm-config-%s", name),
@@ -397,9 +398,10 @@ var _ = Describe("ModelAPI Controller", func() {
 			}, configMap); err != nil {
 				return false
 			}
-			return containsSubstring(configMap.Data["config.yaml"], "model_name: \"openai/*\"") &&
-				containsSubstring(configMap.Data["config.yaml"], "model_name: \"anthropic/*\"")
-		}, timeout, interval).Should(BeTrue(), "ConfigMap should be updated with new models")
+			// With wildcard patterns, the config should have model: "*" for passthrough
+			return containsSubstring(configMap.Data["config.yaml"], "model_name: \"*\"") &&
+				containsSubstring(configMap.Data["config.yaml"], "model: \"*\"")
+		}, timeout, interval).Should(BeTrue(), "ConfigMap should be updated with passthrough config for wildcards")
 	})
 
 	It("should delete ModelAPI without errors", func() {
