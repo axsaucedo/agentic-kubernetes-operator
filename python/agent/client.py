@@ -3,6 +3,7 @@ Agent client implementation for OpenAI-compatible API.
 
 Clean, simple implementation with proper streaming support and tool integration.
 Includes agentic loop for tool calling and agent delegation.
+Instrumented with OpenTelemetry for tracing and metrics.
 
 Key design principles:
 - Agent decides when to delegate/call tools based on model response
@@ -13,14 +14,37 @@ Key design principles:
 
 import json
 import re
+import time
 import logging
 from typing import List, Dict, Any, Optional, AsyncIterator, Union, cast
 import httpx
 from dataclasses import dataclass
 
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, Status, StatusCode
+
 from modelapi.client import ModelAPI
 from agent.memory import LocalMemory, NullMemory
 from mcptools.client import MCPClient
+from agent.telemetry.tracing import (
+    get_tracer,
+    inject_context,
+    AGENT_NAME,
+    AGENT_STEP,
+    AGENT_MAX_STEPS,
+    SESSION_ID,
+    MODEL_NAME,
+    TOOL_NAME,
+    DELEGATION_TARGET,
+    DELEGATION_TASK,
+)
+from agent.telemetry.metrics import (
+    record_request,
+    record_model_call,
+    record_tool_call,
+    record_delegation,
+    record_agentic_step,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +335,9 @@ class Agent:
             For testing, set DEBUG_MOCK_RESPONSES env var to a JSON array of responses
             that will be used instead of calling the model API.
         """
+        tracer = get_tracer()
+        request_start = time.perf_counter()
+
         # Get or create session
         if session_id:
             session_id = await self.memory.get_or_create_session(session_id, "agent", "user")
@@ -319,51 +346,128 @@ class Agent:
 
         logger.debug(f"Processing message for session {session_id}, streaming={stream}")
 
-        # Extract user-provided system prompt (if any) from message array
-        user_system_prompt: Optional[str] = None
-        if isinstance(message, list):
-            for msg in message:
-                if msg.get("role") == "system":
-                    user_system_prompt = msg.get("content", "")
-                    break
+        # Start the main agent processing span
+        with tracer.start_as_current_span(
+            "agent.process_message",
+            kind=SpanKind.SERVER,
+            attributes={
+                AGENT_NAME: self.name,
+                SESSION_ID: session_id,
+                AGENT_MAX_STEPS: self.max_steps,
+                "stream": stream,
+            },
+        ) as span:
+            # Extract user-provided system prompt (if any) from message array
+            user_system_prompt: Optional[str] = None
+            if isinstance(message, list):
+                for msg in message:
+                    if msg.get("role") == "system":
+                        user_system_prompt = msg.get("content", "")
+                        break
 
-        # Build enhanced system prompt with tools/agents info
-        system_prompt = await self._build_system_prompt(user_system_prompt)
-        messages = [{"role": "system", "content": system_prompt}]
+            # Build enhanced system prompt with tools/agents info
+            system_prompt = await self._build_system_prompt(user_system_prompt)
+            messages = [{"role": "system", "content": system_prompt}]
 
-        # Handle both string and array input formats
-        if isinstance(message, str):
-            user_event = self.memory.create_event("user_message", message)
-            await self.memory.add_event(session_id, user_event)
-            messages.append({"role": "user", "content": message})
-        else:
-            for msg in message:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                if role == "system":
-                    continue  # Already captured above
+            # Handle both string and array input formats
+            if isinstance(message, str):
+                user_event = self.memory.create_event("user_message", message)
+                await self.memory.add_event(session_id, user_event)
+                messages.append({"role": "user", "content": message})
+            else:
+                for msg in message:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if role == "system":
+                        continue  # Already captured above
 
-                if role == "task-delegation":
-                    delegation_event = self.memory.create_event("task_delegation_received", content)
-                    await self.memory.add_event(session_id, delegation_event)
-                    messages.append({"role": "user", "content": content})
-                else:
-                    messages.append({"role": role, "content": content})
-                    if role == "user":
-                        user_event = self.memory.create_event("user_message", content)
-                        await self.memory.add_event(session_id, user_event)
+                    if role == "task-delegation":
+                        delegation_event = self.memory.create_event(
+                            "task_delegation_received", content
+                        )
+                        await self.memory.add_event(session_id, delegation_event)
+                        messages.append({"role": "user", "content": content})
+                    else:
+                        messages.append({"role": role, "content": content})
+                        if role == "user":
+                            user_event = self.memory.create_event("user_message", content)
+                            await self.memory.add_event(session_id, user_event)
 
-        try:
-            # Agentic loop - iterate up to max_steps
-            for step in range(self.max_steps):
-                logger.debug(f"Agentic loop step {step + 1}/{self.max_steps}")
+            try:
+                # Agentic loop - iterate up to max_steps
+                async for chunk in self._agentic_loop(messages, session_id, stream, span, tracer):
+                    yield chunk
 
-                # Get model response (stream=False always returns str)
-                content = cast(str, await self.model_api.process_message(messages, stream=False))
+                # Record successful request metric
+                duration_ms = (time.perf_counter() - request_start) * 1000
+                record_request(self.name, duration_ms, success=True, stream=stream)
+                span.set_status(Status(StatusCode.OK))
+
+            except Exception as e:
+                error_msg = f"Error processing message: {str(e)}"
+                logger.error(error_msg)
+                error_event = self.memory.create_event("error", error_msg)
+                await self.memory.add_event(session_id, error_event)
+
+                # Record failed request metric
+                duration_ms = (time.perf_counter() - request_start) * 1000
+                record_request(self.name, duration_ms, success=False, stream=stream)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+
+                yield f"Sorry, I encountered an error: {str(e)}"
+
+    async def _agentic_loop(
+        self,
+        messages: List[Dict[str, str]],
+        session_id: str,
+        stream: bool,
+        parent_span: trace.Span,
+        tracer: trace.Tracer,
+    ) -> AsyncIterator[str]:
+        """Execute the agentic loop with tracing."""
+        for step in range(self.max_steps):
+            logger.debug(f"Agentic loop step {step + 1}/{self.max_steps}")
+
+            # Create span for this step
+            with tracer.start_as_current_span(
+                f"agent.step.{step + 1}",
+                kind=SpanKind.INTERNAL,
+                attributes={
+                    AGENT_NAME: self.name,
+                    AGENT_STEP: step + 1,
+                    AGENT_MAX_STEPS: self.max_steps,
+                },
+            ) as step_span:
+                # Get model response with tracing
+                model_start = time.perf_counter()
+                with tracer.start_as_current_span(
+                    "model.inference",
+                    kind=SpanKind.CLIENT,
+                    attributes={
+                        AGENT_NAME: self.name,
+                        MODEL_NAME: self.model_api.model if self.model_api else "unknown",
+                        AGENT_STEP: step + 1,
+                    },
+                ) as model_span:
+                    content = cast(
+                        str, await self.model_api.process_message(messages, stream=False)
+                    )
+                    model_duration = (time.perf_counter() - model_start) * 1000
+                    record_model_call(
+                        self.name,
+                        self.model_api.model if self.model_api else "unknown",
+                        model_duration,
+                        success=True,
+                    )
+                    model_span.set_status(Status(StatusCode.OK))
 
                 # Check for tool call
                 tool_call = self._parse_block(content, "tool_call")
                 if tool_call:
+                    record_agentic_step(self.name, step + 1, "tool")
+                    step_span.set_attribute("step.type", "tool")
+
                     tool_event = self.memory.create_event("tool_call", tool_call)
                     await self.memory.add_event(session_id, tool_event)
 
@@ -373,14 +477,38 @@ class Agent:
                         if not tool_name:
                             raise ValueError("Tool name not specified")
 
-                        # Execute tool inline
-                        tool_result = None
-                        for mcp_client in self.mcp_clients:
-                            if tool_name in mcp_client._tools:
-                                tool_result = await mcp_client.call_tool(tool_name, tool_args)
-                                break
-                        if tool_result is None:
-                            raise ValueError(f"Tool '{tool_name}' not found")
+                        # Execute tool with tracing
+                        tool_start = time.perf_counter()
+                        with tracer.start_as_current_span(
+                            f"tool.{tool_name}",
+                            kind=SpanKind.CLIENT,
+                            attributes={
+                                AGENT_NAME: self.name,
+                                TOOL_NAME: tool_name,
+                                "tool.arguments": str(tool_args)[:500],
+                            },
+                        ) as tool_span:
+                            tool_result = None
+                            mcp_server_name = None
+                            for mcp_client in self.mcp_clients:
+                                if tool_name in mcp_client._tools:
+                                    mcp_server_name = getattr(mcp_client, "name", "unknown")
+                                    tool_result = await mcp_client.call_tool(tool_name, tool_args)
+                                    break
+
+                            if tool_result is None:
+                                raise ValueError(f"Tool '{tool_name}' not found")
+
+                            tool_duration = (time.perf_counter() - tool_start) * 1000
+                            record_tool_call(
+                                self.name,
+                                tool_name,
+                                tool_duration,
+                                success=True,
+                                mcp_server=mcp_server_name,
+                            )
+                            tool_span.set_status(Status(StatusCode.OK))
+                            tool_span.set_attribute("tool.result_length", len(str(tool_result)))
 
                         result_event = self.memory.create_event(
                             "tool_result", {"tool": tool_name, "result": tool_result}
@@ -401,6 +529,9 @@ class Agent:
                 # Check for delegation
                 delegation = self._parse_block(content, "delegate")
                 if delegation:
+                    record_agentic_step(self.name, step + 1, "delegation")
+                    step_span.set_attribute("step.type", "delegation")
+
                     agent_name = delegation.get("agent", "")
                     task = delegation.get("task", "")
 
@@ -416,9 +547,31 @@ class Agent:
 
                     try:
                         context_messages = [m for m in messages if m.get("role") != "system"]
-                        delegation_result = await self.delegate_to_sub_agent(
-                            agent_name, task, context_messages, session_id
-                        )
+
+                        # Delegate with tracing
+                        delegation_start = time.perf_counter()
+                        with tracer.start_as_current_span(
+                            f"delegate.{agent_name}",
+                            kind=SpanKind.CLIENT,
+                            attributes={
+                                AGENT_NAME: self.name,
+                                DELEGATION_TARGET: agent_name,
+                                DELEGATION_TASK: task[:500],
+                            },
+                        ) as delegation_span:
+                            # Inject trace context for propagation
+                            headers: Dict[str, str] = {}
+                            inject_context(headers)
+
+                            delegation_result = await self.delegate_to_sub_agent(
+                                agent_name, task, context_messages, session_id
+                            )
+
+                            delegation_duration = (time.perf_counter() - delegation_start) * 1000
+                            record_delegation(
+                                self.name, agent_name, delegation_duration, success=True
+                            )
+                            delegation_span.set_status(Status(StatusCode.OK))
 
                         messages.append({"role": "assistant", "content": content})
                         messages.append(
@@ -432,6 +585,9 @@ class Agent:
                         continue
 
                 # No tool call or delegation - this is the final response
+                record_agentic_step(self.name, step + 1, "final")
+                step_span.set_attribute("step.type", "final")
+
                 response_event = self.memory.create_event("agent_response", content)
                 await self.memory.add_event(session_id, response_event)
 
@@ -442,17 +598,10 @@ class Agent:
                     yield content
                 return
 
-            # Max steps reached
-            max_steps_msg = f"Reached maximum reasoning steps ({self.max_steps})"
-            logger.warning(max_steps_msg)
-            yield max_steps_msg
-
-        except Exception as e:
-            error_msg = f"Error processing message: {str(e)}"
-            logger.error(error_msg)
-            error_event = self.memory.create_event("error", error_msg)
-            await self.memory.add_event(session_id, error_event)
-            yield f"Sorry, I encountered an error: {str(e)}"
+        # Max steps reached
+        max_steps_msg = f"Reached maximum reasoning steps ({self.max_steps})"
+        logger.warning(max_steps_msg)
+        yield max_steps_msg
 
     async def delegate_to_sub_agent(
         self,
