@@ -2,7 +2,9 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'  # Standard releases (v1.0.0, v0.1.2, etc)
+      - '!v0.0.*'  # Exclude test tags
 
 # Grant permissions needed by all jobs including reusable workflows
 permissions:
@@ -11,6 +13,11 @@ permissions:
   pages: write
   id-token: write
   pull-requests: write
+
+# Prevent concurrent gh-pages deploys
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   # Validate tag format

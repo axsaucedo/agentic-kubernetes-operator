@@ -9,6 +9,11 @@ permissions:
   pages: write
   id-token: write
 
+# Prevent concurrent gh-pages deploys
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-latest
