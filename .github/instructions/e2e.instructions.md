@@ -8,14 +8,49 @@ applyTo: "operator/tests/**"
 
 E2E tests use pytest and require a Kubernetes cluster with Gateway API.
 
+The test environment and cluster is configured with the following command:
+
+```
+make kind-create
+make kind-e2e-run-tests # Also runs kind-load-images kind-e2e-install-kaos targets
+```
+
 ### Quick Reference
+
+Run `source .venv/bin/activate && <command>` for any relevant command.
+
+To run tests directly against an already set up cluster:
+
 ```bash
 cd operator/tests
 source .venv/bin/activate
-pytest e2e/ -v                    # Run all E2E tests (parallel)
-pytest e2e/ -v --sequential       # Run sequentially with debug output
-pytest e2e/test_agent.py -v -k "test_agent_creation"  # Run single test
+make e2e-test
 ```
+
+
+To run sequentially:
+
+```
+cd operator/tests
+source .venv/bin/activate
+make e2e-test
+```
+
+To run a specific test (this is preferred when locally):
+
+```
+cd operator/tests
+source .venv/bin/activate
+python e2e/test_agent.py -v -k "test_agent_creation"  # Run single test
+```
+
+WHen looking to run all tests, it is preferrable to do it through creating a PR and committing the change and listening to the job.
+
+The e2e tests in the CI take the following time in average:
+
+* These are three: 1) core, 2) mcp, and 3) multi-agent
+* These last 6-7min end to end
+* These are part of the reusable-tests.yaml github action
 
 ### Required Environment Variables
 - `GATEWAY_URL`: URL for the Gateway (default: `http://localhost:80`)
@@ -56,3 +91,9 @@ make e2e-test                     # Run E2E tests
 1. **Timeout errors**: Increase `PYTEST_TIMEOUT` or use `--timeout=300`
 2. **Gateway 503**: Wait for Gateway pods: `kubectl wait --for=condition=available deployment -n envoy-gateway-system --all`
 3. **CRD not found**: Ensure `make kind-e2e-install-kaos` completed successfully
+
+### Important actions
+
+* When finding important new learnings on common issues update this file.
+* Keep this file succinct and functional
+

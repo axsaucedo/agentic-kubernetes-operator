@@ -1,13 +1,26 @@
 # KAOS (K8s Agent Orchestration System)
 
-Kubernetes-native AI agent orchestration framework with A2A protocol support.
+Kubernetes-native AI agent orchestration framework.
 
 ## Quick Reference
 
+## Key Principles
+- **KEEP IT SIMPLE** - Avoid over-engineering
+- Tests AND linting are the success criteria for development
+- Conventional commits after every task (not at the end)
+- End-to-end tests can be run in github actions CI; push a PR and track progress
+- Review the module specific instructions under .github/instructions for context
+- Update documentation, .github/copilot-instructions.md and .github/instructions/* after changes; keep it succinct and functional
+
 ### Commit Guidelines
-Use conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `test(scope):`, `docs:`
+Use conventional commits: `feat(scope):`, `fix(scope):`, `refactor(scope):`, `test(scope):`, `docs:` - keep it functional and succinct. 
 
 ### Build & Test Commands
+
+You perform all changes in Pull Requests. All tests run inside the pull requests, so you can push. End to end runs are fastest in PR github actions, so you can create a PR and push to review. 
+
+Running local tests for python and golang operator is possible, and running individual or handful of e2e tests is also encouraged, but for end-to-end create and push a PR.
+
 ```bash
 # Python (agent framework)
 cd python && source .venv/bin/activate
@@ -54,28 +67,6 @@ operator/                  # K8s operator (Go, kubebuilder)
 - `operator/chart/`: Helm chart (generated from kustomize)
 - `python/agent/client.py`: Agent runtime core
 
-## RBAC (Important)
-RBAC is auto-generated from `// +kubebuilder:rbac:` annotations.
-- Controller RBAC: in controller files
-- Leader election (leases, events): in `main.go`
-- **Never manually edit** `config/rbac/role.yaml`
-
-## Environment Variables
-
-### Agent Runtime
-| Variable | Description |
-|----------|-------------|
-| `AGENT_NAME` | Agent name (required) |
-| `MODEL_API_URL` | LLM API URL (required) |
-| `MODEL_NAME` | Model name (required) |
-| `DEBUG_MOCK_RESPONSES` | Mock responses for testing |
-
-### Operator (via ConfigMap)
-| Variable | Description |
-|----------|-------------|
-| `DEFAULT_AGENT_IMAGE` | Default agent container image |
-| `GATEWAY_API_ENABLED` | Enable Gateway API integration |
-
 ## Testing Notes
 
 ### E2E on macOS/KIND
@@ -85,16 +76,8 @@ kubectl port-forward -n envoy-gateway-system svc/envoy-gateway 8888:80 &
 export GATEWAY_URL=http://localhost:8888
 ```
 
-### Deterministic Testing
-Use `DEBUG_MOCK_RESPONSES` env var for deterministic E2E tests:
-```yaml
-env:
-- name: DEBUG_MOCK_RESPONSES
-  value: '["Response 1", "Response 2"]'
-```
-
 ## Domain-Specific Instructions
 Detailed instructions are in `.github/instructions/`:
-- `e2e.instructions.md`: E2E test environment and patterns
-- `python.instructions.md`: Python framework details
-- `operator.instructions.md`: Go operator development
+- `e2e.instructions.md`: E2E test setup, structure, gotchas and fast testing
+- `python.instructions.md`: Data Plane Python runtime framework details
+- `operator.instructions.md`: Control Plane Golang operator development

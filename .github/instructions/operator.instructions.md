@@ -20,6 +20,20 @@ make helm                     # Regenerate Helm chart from kustomize
 - `config/crd/bases/`: Generated CRD YAML files
 - `chart/`: Helm chart (generated from kustomize)
 
+## CRDs
+
+For detailed information on the CRDs see the following documentation:
+
+* docs/operator/agent-crd.md
+* docs/operator/gateway-api.md
+* docs/operator/mcpserver-crd.md
+* docs/operator/modelapi-crd.md
+* docs/operator/overview.md
+
+View each respective file in case of making modifications to the respective module.
+
+If any changes are introduced, this documentation must be updated accordingly.
+
 ## Key Commands
 ```bash
 # After changing *_types.go files:
