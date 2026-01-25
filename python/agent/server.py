@@ -23,7 +23,7 @@ from modelapi.client import ModelAPI
 from agent.client import Agent, RemoteAgent
 from agent.memory import LocalMemory
 from mcptools.client import MCPClient
-from agent.telemetry.config import TelemetryConfig, init_telemetry, shutdown_telemetry
+from agent.telemetry import init_otel, is_otel_enabled
 
 
 def configure_logging(level: str = "INFO", otel_correlation: bool = False) -> None:
@@ -127,17 +127,6 @@ class AgentServerSettings(BaseSettings):
     # Logging settings
     agent_access_log: bool = False  # Mute uvicorn access logs by default
 
-    # OpenTelemetry configuration
-    otel_enabled: bool = False  # Enable OpenTelemetry instrumentation
-    otel_service_name: Optional[str] = None  # Defaults to agent_name
-    otel_service_version: str = "0.0.1"
-    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
-    otel_exporter_otlp_insecure: bool = True
-    otel_traces_enabled: bool = True
-    otel_metrics_enabled: bool = True
-    otel_log_correlation: bool = True
-    otel_console_export: bool = False  # Export to console for debugging
-
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -161,7 +150,6 @@ class AgentServer:
         agent: Agent,
         port: int = 8000,
         access_log: bool = False,
-        telemetry_config: Optional[TelemetryConfig] = None,
     ):
         """Initialize AgentServer with an agent.
 
@@ -169,13 +157,10 @@ class AgentServer:
             agent: Agent instance to serve
             port: Port to serve on
             access_log: Whether to enable uvicorn access logs (default: False)
-            telemetry_config: OpenTelemetry configuration (optional)
         """
         self.agent = agent
         self.port = port
         self.access_log = access_log
-        self.telemetry_config = telemetry_config
-        self._telemetry_enabled = False
 
         # Create FastAPI app
         self.app = FastAPI(
@@ -190,13 +175,14 @@ class AgentServer:
 
     def _setup_telemetry(self):
         """Setup OpenTelemetry instrumentation for FastAPI."""
-        if self.telemetry_config and self.telemetry_config.enabled:
+        if is_otel_enabled():
             try:
                 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+                from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
                 FastAPIInstrumentor.instrument_app(self.app)
-                self._telemetry_enabled = True
-                logger.info("OpenTelemetry FastAPI instrumentation enabled")
+                HTTPXClientInstrumentor().instrument()
+                logger.info("OpenTelemetry instrumentation enabled (FastAPI + HTTPX)")
             except Exception as e:
                 logger.warning(f"Failed to enable OpenTelemetry instrumentation: {e}")
 
@@ -206,8 +192,6 @@ class AgentServer:
         self._log_startup_config()
         yield
         logger.info("AgentServer shutdown")
-        if self._telemetry_enabled:
-            shutdown_telemetry()
         await self.agent.close()
 
     def _log_startup_config(self):
@@ -489,12 +473,11 @@ def create_agent_server(
         # Load from environment variables - requires AGENT_NAME and MODEL_API_URL
         settings = AgentServerSettings()  # type: ignore[call-arg]
 
-    # Configure logging before anything else
+    # Check if OTel enabled via env var
+    otel_enabled = is_otel_enabled()
+
     # Configure logging with optional OTel correlation
-    configure_logging(
-        settings.agent_log_level,
-        otel_correlation=settings.otel_enabled and settings.otel_log_correlation,
-    )
+    configure_logging(settings.agent_log_level, otel_correlation=otel_enabled)
 
     model_api = ModelAPI(model=settings.model_name, api_base=settings.model_api_url)
 
@@ -563,22 +546,17 @@ def create_agent_server(
     else:
         memory = NullMemory()
 
-    # Initialize OpenTelemetry if enabled
-    telemetry_config = None
-    if settings.otel_enabled:
-        telemetry_config = TelemetryConfig(
-            enabled=settings.otel_enabled,
-            service_name=settings.otel_service_name or settings.agent_name,
-            service_version=settings.otel_service_version,
-            otlp_endpoint=settings.otel_exporter_otlp_endpoint,
-            otlp_insecure=settings.otel_exporter_otlp_insecure,
-            traces_enabled=settings.otel_traces_enabled,
-            metrics_enabled=settings.otel_metrics_enabled,
-            log_correlation=settings.otel_log_correlation,
-            console_export=settings.otel_console_export,
-            extra_attributes={"agent.name": settings.agent_name},
-        )
-        init_telemetry(telemetry_config)
+    # Initialize OpenTelemetry if enabled (uses standard OTEL_* env vars)
+    init_otel(settings.agent_name)
+
+    # Configure log correlation if OTel is enabled
+    if is_otel_enabled():
+        try:
+            from opentelemetry.instrumentation.logging import LoggingInstrumentor
+
+            LoggingInstrumentor().instrument(set_logging_format=False)
+        except Exception as e:
+            logger.warning(f"Failed to enable OTel log correlation: {e}")
 
     agent = Agent(
         name=settings.agent_name,
@@ -597,7 +575,6 @@ def create_agent_server(
         agent,
         port=settings.agent_port,
         access_log=settings.agent_access_log,
-        telemetry_config=telemetry_config,
     )
 
     return server

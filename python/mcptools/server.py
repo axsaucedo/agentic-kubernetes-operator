@@ -1,8 +1,9 @@
 import logging
+import os
 import sys
 import time
 from types import FunctionType
-from typing import Dict, Any, Callable, List, Literal, Optional
+from typing import Dict, Any, Callable, List, Literal
 from fastmcp import FastMCP
 import uvicorn
 from fastmcp.server.http import StarletteWithLifespan
@@ -73,16 +74,6 @@ class MCPServerSettings(BaseSettings):
     mcp_log_level: str = "INFO"
     mcp_access_log: bool = False  # Mute uvicorn access logs by default
 
-    # OpenTelemetry configuration
-    otel_enabled: bool = False
-    otel_service_name: Optional[str] = None  # Defaults to "mcp-server"
-    otel_service_version: str = "0.0.1"
-    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
-    otel_exporter_otlp_insecure: bool = True
-    otel_traces_enabled: bool = True
-    otel_metrics_enabled: bool = True
-    otel_log_correlation: bool = True
-
 
 class MCPServer:
     """MCP server that hosts tools via FastMCP Streamable HTTP protocol.
@@ -93,44 +84,35 @@ class MCPServer:
 
     def __init__(self, settings: MCPServerSettings):
         """Initialize MCP server."""
+        # Check if OTel enabled via env var
+        otel_enabled = os.getenv("OTEL_ENABLED", "false").lower() in ("true", "1", "yes")
+
         # Configure logging with optional OTel correlation
-        configure_logging(
-            settings.mcp_log_level,
-            otel_correlation=settings.otel_enabled and settings.otel_log_correlation,
-        )
+        configure_logging(settings.mcp_log_level, otel_correlation=otel_enabled)
 
         self._host = settings.mcp_host
         self._port = settings.mcp_port
         self._log_level = settings.mcp_log_level
         self._access_log = settings.mcp_access_log
-        self._otel_enabled = settings.otel_enabled
+        self._otel_enabled = otel_enabled
         self.mcp = FastMCP("Dynamic MCP Server")
         self.tools_registry: Dict[str, Callable] = {}
 
         # Initialize OpenTelemetry if enabled
-        if settings.otel_enabled:
-            self._init_telemetry(settings)
+        if otel_enabled:
+            self._init_telemetry()
 
         # Register provided tools
         if settings.mcp_tools_string:
             self.register_tools_from_string(settings.mcp_tools_string)
 
-    def _init_telemetry(self, settings: MCPServerSettings):
+    def _init_telemetry(self):
         """Initialize OpenTelemetry for the MCP server."""
         try:
-            from agent.telemetry.config import TelemetryConfig, init_telemetry
+            from agent.telemetry import init_otel
 
-            config = TelemetryConfig(
-                enabled=settings.otel_enabled,
-                service_name=settings.otel_service_name or "mcp-server",
-                service_version=settings.otel_service_version,
-                otlp_endpoint=settings.otel_exporter_otlp_endpoint,
-                otlp_insecure=settings.otel_exporter_otlp_insecure,
-                traces_enabled=settings.otel_traces_enabled,
-                metrics_enabled=settings.otel_metrics_enabled,
-                log_correlation=settings.otel_log_correlation,
-            )
-            init_telemetry(config)
+            service_name = os.getenv("OTEL_SERVICE_NAME", "mcp-server")
+            init_otel(service_name)
             logger.info("OpenTelemetry initialized for MCP server")
         except Exception as e:
             logger.warning(f"Failed to initialize OpenTelemetry: {e}")
@@ -200,6 +182,16 @@ class MCPServer:
             transport: MCP transport type. Default is streamable-http (recommended).
         """
         mcp_app = self.mcp.http_app(transport=transport)
+
+        # Add OTel instrumentation for Starlette if enabled
+        if self._otel_enabled:
+            try:
+                from opentelemetry.instrumentation.starlette import StarletteInstrumentor
+
+                StarletteInstrumentor.instrument_app(mcp_app)
+                logger.info("OpenTelemetry Starlette instrumentation enabled")
+            except Exception as e:
+                logger.warning(f"Failed to enable Starlette instrumentation: {e}")
 
         async def health(request):
             return JSONResponse(

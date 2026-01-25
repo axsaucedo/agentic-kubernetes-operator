@@ -1,43 +1,22 @@
 """
-OpenTelemetry instrumentation for KAOS agents.
+OpenTelemetry instrumentation for KAOS.
 
-Provides tracing, metrics, and log correlation for:
-- Agent processing (agentic loop, tool calls, delegations)
-- Model API calls (LLM inference)
-- MCP tool execution
-- A2A agent communication
+Simple interface using standard OTEL_* environment variables.
+When OTEL_ENABLED=true, traces, metrics, and log correlation are enabled.
 """
 
-from agent.telemetry.config import TelemetryConfig, init_telemetry
-from agent.telemetry.tracing import (
-    get_tracer,
-    get_current_span,
-    inject_context,
-    extract_context,
-    span_attributes,
-)
-from agent.telemetry.metrics import (
-    get_meter,
-    record_request,
-    record_model_call,
-    record_tool_call,
-    record_delegation,
+from agent.telemetry.manager import (
+    OtelConfig,
+    KaosOtelManager,
+    init_otel,
+    is_otel_enabled,
+    timed,
 )
 
 __all__ = [
-    # Configuration
-    "TelemetryConfig",
-    "init_telemetry",
-    # Tracing
-    "get_tracer",
-    "get_current_span",
-    "inject_context",
-    "extract_context",
-    "span_attributes",
-    # Metrics
-    "get_meter",
-    "record_request",
-    "record_model_call",
-    "record_tool_call",
-    "record_delegation",
+    "OtelConfig",
+    "KaosOtelManager",
+    "init_otel",
+    "is_otel_enabled",
+    "timed",
 ]
