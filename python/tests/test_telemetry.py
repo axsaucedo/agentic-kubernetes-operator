@@ -2,42 +2,26 @@
 Tests for OpenTelemetry instrumentation.
 """
 
-import pytest
 import os
-import time
+import pytest
 from unittest.mock import patch
 
 
 class TestIsOtelEnabled:
     """Tests for is_otel_enabled utility."""
 
-    def test_enabled_by_default(self):
-        """Test that telemetry is enabled by default (OTEL_SDK_DISABLED not set)."""
-        with patch.dict(os.environ, {}, clear=True):
-            from telemetry.manager import is_otel_enabled
+    def test_returns_false_before_init(self):
+        """Test that is_otel_enabled returns False before initialization."""
+        # Import fresh module - is_otel_enabled checks _initialized flag, not env var
+        import telemetry.manager as tm
 
-            assert is_otel_enabled() is True
-
-    def test_disabled_with_true(self):
-        """Test disabling with OTEL_SDK_DISABLED=true."""
-        with patch.dict(os.environ, {"OTEL_SDK_DISABLED": "true"}, clear=True):
-            from telemetry.manager import is_otel_enabled
-
-            assert is_otel_enabled() is False
-
-    def test_disabled_with_one(self):
-        """Test disabling with OTEL_SDK_DISABLED=1."""
-        with patch.dict(os.environ, {"OTEL_SDK_DISABLED": "1"}, clear=True):
-            from telemetry.manager import is_otel_enabled
-
-            assert is_otel_enabled() is False
-
-    def test_enabled_with_false(self):
-        """Test explicitly enabled with OTEL_SDK_DISABLED=false."""
-        with patch.dict(os.environ, {"OTEL_SDK_DISABLED": "false"}, clear=True):
-            from telemetry.manager import is_otel_enabled
-
-            assert is_otel_enabled() is True
+        # Reset module state for testing
+        original = tm._initialized
+        tm._initialized = False
+        try:
+            assert tm.is_otel_enabled() is False
+        finally:
+            tm._initialized = original
 
 
 class TestOtelConfig:
@@ -110,72 +94,59 @@ class TestKaosOtelManager:
         manager = KaosOtelManager("test-agent")
         assert manager._meter is not None
 
-    def test_span_context_manager(self):
-        """Test span context manager."""
+    def test_span_begin_success_pattern(self):
+        """Test span_begin/span_success pattern (no-op when not initialized)."""
         from telemetry.manager import KaosOtelManager
 
         manager = KaosOtelManager("test-agent")
-        with manager.span("test-operation") as span:
-            assert span is not None
+        manager.span_begin("test-operation")
+        try:
+            pass  # do work
+        finally:
+            manager.span_success()
 
-    def test_record_request(self):
-        """Test record_request doesn't raise errors."""
+    def test_span_begin_failure_pattern(self):
+        """Test span_begin/span_failure pattern."""
         from telemetry.manager import KaosOtelManager
 
         manager = KaosOtelManager("test-agent")
-        manager.record_request(100.0, success=True)
+        manager.span_begin("test-operation")
+        try:
+            raise ValueError("test error")
+        except ValueError as e:
+            manager.span_failure(e)
+        finally:
+            manager.span_success()  # Should be no-op after failure
 
-    def test_record_request_with_failure(self):
-        """Test record_request with success=False."""
+    def test_nested_spans(self):
+        """Test nested span_begin calls."""
         from telemetry.manager import KaosOtelManager
 
         manager = KaosOtelManager("test-agent")
-        manager.record_request(100.0, success=False)
+        manager.span_begin("outer")
+        try:
+            manager.span_begin("inner")
+            try:
+                pass
+            finally:
+                manager.span_success()
+        finally:
+            manager.span_success()
 
-    def test_record_model_call(self):
-        """Test record_model_call doesn't raise errors."""
+    def test_span_with_metric_kind(self):
+        """Test span_begin with metric_kind parameter."""
         from telemetry.manager import KaosOtelManager
 
         manager = KaosOtelManager("test-agent")
-        manager.record_model_call("gpt-4", 500.0, success=True)
-
-    def test_record_tool_call(self):
-        """Test record_tool_call doesn't raise errors."""
-        from telemetry.manager import KaosOtelManager
-
-        manager = KaosOtelManager("test-agent")
-        manager.record_tool_call("calculator", 50.0, success=True)
-
-    def test_record_delegation(self):
-        """Test record_delegation doesn't raise errors."""
-        from telemetry.manager import KaosOtelManager
-
-        manager = KaosOtelManager("test-agent")
-        manager.record_delegation("worker-1", 200.0, success=True)
-
-    def test_model_span_context_manager(self):
-        """Test model_span context manager."""
-        from telemetry.manager import KaosOtelManager
-
-        manager = KaosOtelManager("test-agent")
-        with manager.model_span("gpt-4") as span:
-            assert span is not None
-
-    def test_tool_span_context_manager(self):
-        """Test tool_span context manager."""
-        from telemetry.manager import KaosOtelManager
-
-        manager = KaosOtelManager("test-agent")
-        with manager.tool_span("calculator") as span:
-            assert span is not None
-
-    def test_delegation_span_context_manager(self):
-        """Test delegation_span context manager."""
-        from telemetry.manager import KaosOtelManager
-
-        manager = KaosOtelManager("test-agent")
-        with manager.delegation_span("worker-1") as span:
-            assert span is not None
+        manager.span_begin(
+            "model.inference",
+            metric_kind="model",
+            metric_attrs={"model": "gpt-4"},
+        )
+        try:
+            pass
+        finally:
+            manager.span_success()
 
 
 class TestContextPropagation:
@@ -196,20 +167,6 @@ class TestContextPropagation:
         carrier: dict = {}
         context = KaosOtelManager.extract_context(carrier)
         assert context is not None
-
-
-class TestTimedContextManager:
-    """Tests for timed context manager."""
-
-    def test_timed_operation(self):
-        """Test timed context manager tracks duration."""
-        from telemetry.manager import timed
-
-        with timed() as result:
-            time.sleep(0.01)
-
-        assert "duration_ms" in result
-        assert result["duration_ms"] >= 10  # At least 10ms
 
 
 class TestMCPServerTelemetrySimplified:

@@ -6,19 +6,21 @@ OTEL_* environment variables. Uses OTEL_SDK_DISABLED (standard OTel env var) to
 control whether telemetry is enabled.
 
 Key design:
-- Process-global SDK initialization via _OtelSingleton (providers, propagators)
-- Lightweight KaosOtelManager instances for per-service span/metric creation
+- Process-global SDK initialization via module-level _initialized flag
+- Inline span management via span_begin/span_success/span_failure (no context managers)
+- Async-safe span stack via contextvars for nesting support
 - OtelConfig uses pydantic BaseSettings with OTEL-compliant env var names
 """
 
 import logging
 import os
 import time
-from contextlib import contextmanager
-from typing import Any, Dict, Iterator, Optional
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from opentelemetry import trace, metrics
+from opentelemetry import trace, metrics, context as otel_context
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -41,6 +43,25 @@ ATTR_SESSION_ID = "session.id"
 ATTR_MODEL_NAME = "gen_ai.request.model"
 ATTR_TOOL_NAME = "tool.name"
 ATTR_DELEGATION_TARGET = "agent.delegation.target"
+
+# Process-global initialization state
+_initialized: bool = False
+
+
+@dataclass
+class SpanState:
+    """State for an active span on the stack."""
+
+    span: Span
+    token: object  # Context token for detaching
+    start_time: float
+    metric_kind: Optional[str] = None  # "request", "model", "tool", "delegation"
+    metric_attrs: Dict[str, Any] = field(default_factory=dict)
+    ended: bool = False
+
+
+# Async-safe span stack per context (supports nesting)
+_span_stack: ContextVar[List[SpanState]] = ContextVar("kaos_span_stack", default=[])
 
 
 class OtelConfig(BaseSettings):
@@ -68,75 +89,12 @@ class OtelConfig(BaseSettings):
         return not self.otel_sdk_disabled
 
 
-class _OtelSingleton:
-    """Private singleton holding process-global OTel state.
-
-    SDK providers are process-global and should only be initialized once.
-    This class ensures idempotent initialization.
-    """
-
-    _instance: Optional["_OtelSingleton"] = None
-    _initialized: bool = False
-
-    def __new__(cls) -> "_OtelSingleton":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def initialize(self, config: OtelConfig) -> bool:
-        """Initialize OTel SDK with given config. Idempotent.
-
-        Returns True if initialization happened, False if already initialized or disabled.
-        """
-        if self._initialized:
-            return False
-
-        if not config.enabled:
-            logger.debug("OpenTelemetry disabled (OTEL_SDK_DISABLED=true)")
-            self._initialized = True
-            return False
-
-        # Create resource with service name
-        resource = Resource.create({SERVICE_NAME: config.otel_service_name})
-
-        # Set up W3C Trace Context propagation (standard)
-        set_global_textmap(
-            CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()])
-        )
-
-        # Initialize tracing - let SDK use OTEL_EXPORTER_OTLP_* env vars for advanced config
-        tracer_provider = TracerProvider(resource=resource)
-        # Only set endpoint explicitly, let SDK handle insecure/headers via env vars
-        otlp_span_exporter = OTLPSpanExporter(endpoint=config.otel_exporter_otlp_endpoint)
-        tracer_provider.add_span_processor(BatchSpanProcessor(otlp_span_exporter))
-        trace.set_tracer_provider(tracer_provider)
-
-        # Initialize metrics
-        otlp_metric_exporter = OTLPMetricExporter(endpoint=config.otel_exporter_otlp_endpoint)
-        metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter)
-        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-        metrics.set_meter_provider(meter_provider)
-
-        logger.info(
-            f"OpenTelemetry initialized: {config.otel_exporter_otlp_endpoint} "
-            f"(service: {config.otel_service_name})"
-        )
-        self._initialized = True
-        return True
-
-    @property
-    def is_initialized(self) -> bool:
-        """Check if OTel has been initialized."""
-        return self._initialized
-
-
 def is_otel_enabled() -> bool:
-    """Check if OTel is enabled via environment variable.
+    """Check if OTel is initialized and enabled.
 
-    Uses standard OTEL_SDK_DISABLED env var (inverted logic).
+    Returns True only if init_otel() was successfully called and OTel is active.
     """
-    disabled = os.getenv("OTEL_SDK_DISABLED", "false").lower() in ("true", "1", "yes")
-    return not disabled
+    return _initialized
 
 
 def init_otel(service_name: Optional[str] = None) -> bool:
@@ -150,9 +108,15 @@ def init_otel(service_name: Optional[str] = None) -> bool:
     Returns:
         True if OTel was initialized, False if disabled or already initialized
     """
-    # Check if OTel is disabled first
-    if not is_otel_enabled():
-        logger.debug("OpenTelemetry disabled (OTEL_SDK_DISABLED=true or not configured)")
+    global _initialized
+
+    if _initialized:
+        return False
+
+    # Check if OTel is disabled via standard env var
+    disabled = os.getenv("OTEL_SDK_DISABLED", "false").lower() in ("true", "1", "yes")
+    if disabled:
+        logger.debug("OpenTelemetry disabled (OTEL_SDK_DISABLED=true)")
         return False
 
     # Try to load config from env vars
@@ -174,21 +138,51 @@ def init_otel(service_name: Optional[str] = None) -> bool:
         logger.warning(f"OpenTelemetry config error: {e}")
         return False
 
-    return _OtelSingleton().initialize(config)
+    # Create resource with service name
+    resource = Resource.create({SERVICE_NAME: config.otel_service_name})
+
+    # Set up W3C Trace Context propagation (standard)
+    set_global_textmap(
+        CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()])
+    )
+
+    # Initialize tracing - let SDK use OTEL_EXPORTER_OTLP_* env vars for advanced config
+    tracer_provider = TracerProvider(resource=resource)
+    otlp_span_exporter = OTLPSpanExporter(endpoint=config.otel_exporter_otlp_endpoint)
+    tracer_provider.add_span_processor(BatchSpanProcessor(otlp_span_exporter))
+    trace.set_tracer_provider(tracer_provider)
+
+    # Initialize metrics
+    otlp_metric_exporter = OTLPMetricExporter(endpoint=config.otel_exporter_otlp_endpoint)
+    metric_reader = PeriodicExportingMetricReader(otlp_metric_exporter)
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    metrics.set_meter_provider(meter_provider)
+
+    logger.info(
+        f"OpenTelemetry initialized: {config.otel_exporter_otlp_endpoint} "
+        f"(service: {config.otel_service_name})"
+    )
+    _initialized = True
+    return True
 
 
 class KaosOtelManager:
     """Lightweight helper for creating spans and recording metrics.
 
-    Provides convenience methods for KAOS-specific telemetry. Each server/client
-    creates one instance holding thin metadata. The underlying providers are
-    process-global via _OtelSingleton.
+    Uses inline span management via span_begin/span_success/span_failure instead
+    of context managers. Timing is handled internally via contextvars.
 
     Example:
         otel = KaosOtelManager("my-agent")
-        with otel.span("process_request", session_id="abc123") as span:
+        otel.span_begin("process_request", attrs={"session.id": "abc123"})
+        try:
             # do work
-            span.set_attribute("custom", "value")
+            pass
+        except Exception as e:
+            otel.span_failure(e)
+            raise
+        finally:
+            otel.span_success()
     """
 
     def __init__(self, service_name: str):
@@ -241,98 +235,172 @@ class KaosOtelManager:
             "kaos.delegation.duration", description="Delegation duration", unit="ms"
         )
 
-    @contextmanager
-    def span(
+    def _get_stack(self) -> List[SpanState]:
+        """Get or create the span stack for current async context."""
+        try:
+            return _span_stack.get()
+        except LookupError:
+            stack: List[SpanState] = []
+            _span_stack.set(stack)
+            return stack
+
+    def span_begin(
         self,
         name: str,
+        *,
         kind: SpanKind = SpanKind.INTERNAL,
-        session_id: Optional[str] = None,
-        **attributes: Any,
-    ) -> Iterator[Span]:
-        """Create a span with automatic end and status handling.
+        attrs: Optional[Dict[str, Any]] = None,
+        metric_kind: Optional[str] = None,
+        metric_attrs: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Begin a span. Must be paired with span_success() or span_failure().
 
         Args:
             name: Span name
             kind: Span kind (INTERNAL, CLIENT, SERVER)
-            session_id: Optional session ID to attach
-            **attributes: Additional span attributes
-
-        Yields:
-            The active span
+            attrs: Span attributes
+            metric_kind: Type of metric to record ("request", "model", "tool", "delegation")
+            metric_attrs: Additional attributes for metric recording
         """
-        attrs = {ATTR_AGENT_NAME: self.service_name}
-        if session_id:
-            attrs[ATTR_SESSION_ID] = session_id
-        attrs.update({k: v for k, v in attributes.items() if v is not None})
+        if not _initialized:
+            return
 
-        with self._tracer.start_as_current_span(name, kind=kind, attributes=attrs) as span:
-            try:
-                yield span
-                span.set_status(Status(StatusCode.OK))
-            except Exception as e:
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                raise
+        # Build attributes
+        span_attrs = {ATTR_AGENT_NAME: self.service_name}
+        if attrs:
+            span_attrs.update({k: v for k, v in attrs.items() if v is not None})
 
-    @contextmanager
-    def model_span(self, model_name: str) -> Iterator[Span]:
-        """Create a span for model API calls."""
-        with self.span("model.inference", SpanKind.CLIENT, **{ATTR_MODEL_NAME: model_name}) as s:
-            yield s
+        # Start span and make it current
+        span = self._tracer.start_span(name, kind=kind, attributes=span_attrs)
+        token = otel_context.attach(trace.set_span_in_context(span))
 
-    @contextmanager
-    def tool_span(self, tool_name: str) -> Iterator[Span]:
-        """Create a span for tool execution."""
-        with self.span(f"tool.{tool_name}", SpanKind.CLIENT, **{ATTR_TOOL_NAME: tool_name}) as s:
-            yield s
+        # Push state onto stack
+        state = SpanState(
+            span=span,
+            token=token,
+            start_time=time.perf_counter(),
+            metric_kind=metric_kind,
+            metric_attrs=metric_attrs or {},
+        )
+        stack = self._get_stack()
+        stack.append(state)
 
-    @contextmanager
-    def delegation_span(self, target_agent: str) -> Iterator[Span]:
-        """Create a span for A2A delegation."""
-        with self.span(
-            f"delegate.{target_agent}", SpanKind.CLIENT, **{ATTR_DELEGATION_TARGET: target_agent}
-        ) as s:
-            yield s
+    def span_success(self) -> None:
+        """End the current span with OK status. No-op if already ended or OTel disabled."""
+        if not _initialized:
+            return
 
-    def record_request(self, duration_ms: float, success: bool = True) -> None:
-        """Record request metrics."""
+        stack = self._get_stack()
+        if not stack:
+            return
+
+        state = stack[-1]
+        if state.ended:
+            return
+
+        # Mark ended and calculate duration
+        state.ended = True
+        duration_ms = (time.perf_counter() - state.start_time) * 1000
+
+        # Set status and end span
+        state.span.set_status(Status(StatusCode.OK))
+        state.span.end()
+
+        # Detach context
+        otel_context.detach(state.token)
+
+        # Record metrics
+        self._record_metric(state.metric_kind, state.metric_attrs, duration_ms, success=True)
+
+        # Pop from stack
+        stack.pop()
+
+    def span_failure(self, exc: Exception) -> None:
+        """End the current span with ERROR status. Records the exception."""
+        if not _initialized:
+            return
+
+        stack = self._get_stack()
+        if not stack:
+            return
+
+        state = stack[-1]
+        if state.ended:
+            return
+
+        # Mark ended and calculate duration
+        state.ended = True
+        duration_ms = (time.perf_counter() - state.start_time) * 1000
+
+        # Set status, record exception, and end span
+        state.span.set_status(Status(StatusCode.ERROR, str(exc)))
+        state.span.record_exception(exc)
+        state.span.end()
+
+        # Detach context
+        otel_context.detach(state.token)
+
+        # Record metrics
+        self._record_metric(state.metric_kind, state.metric_attrs, duration_ms, success=False)
+
+        # Pop from stack
+        stack.pop()
+
+    def _record_metric(
+        self,
+        metric_kind: Optional[str],
+        metric_attrs: Dict[str, Any],
+        duration_ms: float,
+        success: bool,
+    ) -> None:
+        """Record metrics based on metric_kind."""
+        if not metric_kind:
+            return
+
         self._ensure_metrics()
-        labels = {"agent.name": self.service_name, "success": str(success).lower()}
-        if self._request_counter:
-            self._request_counter.add(1, labels)
-        if self._request_duration:
-            self._request_duration.record(duration_ms, labels)
 
-    def record_model_call(self, model: str, duration_ms: float, success: bool = True) -> None:
-        """Record model API call metrics."""
-        self._ensure_metrics()
-        labels = {"agent.name": self.service_name, "model": model, "success": str(success).lower()}
-        if self._model_counter:
-            self._model_counter.add(1, labels)
-        if self._model_duration:
-            self._model_duration.record(duration_ms, labels)
+        if metric_kind == "request":
+            labels = {"agent.name": self.service_name, "success": str(success).lower()}
+            if self._request_counter:
+                self._request_counter.add(1, labels)
+            if self._request_duration:
+                self._request_duration.record(duration_ms, labels)
 
-    def record_tool_call(self, tool: str, duration_ms: float, success: bool = True) -> None:
-        """Record tool call metrics."""
-        self._ensure_metrics()
-        labels = {"agent.name": self.service_name, "tool": tool, "success": str(success).lower()}
-        if self._tool_counter:
-            self._tool_counter.add(1, labels)
-        if self._tool_duration:
-            self._tool_duration.record(duration_ms, labels)
+        elif metric_kind == "model":
+            model = metric_attrs.get("model", "unknown")
+            labels = {
+                "agent.name": self.service_name,
+                "model": model,
+                "success": str(success).lower(),
+            }
+            if self._model_counter:
+                self._model_counter.add(1, labels)
+            if self._model_duration:
+                self._model_duration.record(duration_ms, labels)
 
-    def record_delegation(self, target: str, duration_ms: float, success: bool = True) -> None:
-        """Record delegation metrics."""
-        self._ensure_metrics()
-        labels = {
-            "agent.name": self.service_name,
-            "target": target,
-            "success": str(success).lower(),
-        }
-        if self._delegation_counter:
-            self._delegation_counter.add(1, labels)
-        if self._delegation_duration:
-            self._delegation_duration.record(duration_ms, labels)
+        elif metric_kind == "tool":
+            tool = metric_attrs.get("tool", "unknown")
+            labels = {
+                "agent.name": self.service_name,
+                "tool": tool,
+                "success": str(success).lower(),
+            }
+            if self._tool_counter:
+                self._tool_counter.add(1, labels)
+            if self._tool_duration:
+                self._tool_duration.record(duration_ms, labels)
+
+        elif metric_kind == "delegation":
+            target = metric_attrs.get("target", "unknown")
+            labels = {
+                "agent.name": self.service_name,
+                "target": target,
+                "success": str(success).lower(),
+            }
+            if self._delegation_counter:
+                self._delegation_counter.add(1, labels)
+            if self._delegation_duration:
+                self._delegation_duration.record(duration_ms, labels)
 
     @staticmethod
     def inject_context(carrier: Dict[str, str]) -> Dict[str, str]:
@@ -344,17 +412,3 @@ class KaosOtelManager:
     def extract_context(carrier: Dict[str, str]) -> Context:
         """Extract trace context from headers."""
         return extract(carrier)
-
-
-@contextmanager
-def timed() -> Iterator[Dict[str, float]]:
-    """Context manager for timing operations.
-
-    Yields a dict that will contain 'duration_ms' after the block.
-    """
-    result: Dict[str, float] = {}
-    start = time.perf_counter()
-    try:
-        yield result
-    finally:
-        result["duration_ms"] = (time.perf_counter() - start) * 1000
