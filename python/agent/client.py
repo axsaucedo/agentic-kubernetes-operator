@@ -380,7 +380,6 @@ class Agent:
                     error_event = self.memory.create_event("error", error_msg)
                     await self.memory.add_event(session_id, error_event)
                     yield f"Sorry, I encountered an error: {str(e)}"
-                    raise
 
         # Record request metrics after completion
         self._otel.record_request(timing["duration_ms"], success=True)
