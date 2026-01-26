@@ -305,10 +305,11 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *kaosv1alpha1.M
 		}
 	}
 
-	// OpenTelemetry configuration
-	if mcpserver.Spec.Config.Telemetry != nil {
+	// OpenTelemetry configuration - merge with global defaults
+	telemetryConfig := util.MergeTelemetryConfig(mcpserver.Spec.Config.Telemetry)
+	if telemetryConfig != nil {
 		otelEnv := util.BuildTelemetryEnvVars(
-			mcpserver.Spec.Config.Telemetry,
+			telemetryConfig,
 			mcpserver.Name,
 			mcpserver.Namespace,
 		)

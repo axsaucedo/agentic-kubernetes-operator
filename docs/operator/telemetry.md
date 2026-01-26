@@ -10,9 +10,31 @@ When enabled, OpenTelemetry instrumentation provides:
 - **Metrics**: Counters and histograms for requests, latency, and error rates
 - **Log Correlation**: Automatic injection of trace_id and span_id into log entries
 
-## Enabling Telemetry
+## Global Telemetry Configuration
 
-Add a `telemetry` section to your Agent's or MCPServer's config:
+You can enable telemetry globally for all components via Helm values:
+
+```yaml
+# values.yaml
+telemetry:
+  enabled: true
+  endpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+```
+
+Install with global telemetry enabled:
+
+```bash
+helm install kaos oci://ghcr.io/axsaucedo/kaos/chart \
+  --namespace kaos-system \
+  --set telemetry.enabled=true \
+  --set telemetry.endpoint="http://otel-collector:4317"
+```
+
+All Agents and MCPServers will have telemetry enabled by default with this configuration.
+
+## Component-Level Configuration
+
+Override global defaults or enable telemetry for specific components:
 
 ```yaml
 apiVersion: kaos.tools/v1alpha1
@@ -45,6 +67,13 @@ spec:
         def echo(msg: str) -> str:
             return msg
 ```
+
+### Configuration Precedence
+
+Component-level configuration always overrides global defaults:
+
+1. **Component-level telemetry** (highest priority): If `spec.config.telemetry` is set on the Agent or MCPServer, it is used
+2. **Global Helm values** (default): If component-level telemetry is not set, the global `telemetry.enabled` and `telemetry.endpoint` values are used
 
 ## Configuration Fields
 

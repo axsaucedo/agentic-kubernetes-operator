@@ -9,6 +9,29 @@ import (
 	kaosv1alpha1 "github.com/axsaucedo/kaos/operator/api/v1alpha1"
 )
 
+// GetDefaultTelemetryConfig returns a TelemetryConfig from global environment variables.
+// Returns nil if DEFAULT_TELEMETRY_ENABLED is not "true".
+func GetDefaultTelemetryConfig() *kaosv1alpha1.TelemetryConfig {
+	if os.Getenv("DEFAULT_TELEMETRY_ENABLED") != "true" {
+		return nil
+	}
+	return &kaosv1alpha1.TelemetryConfig{
+		Enabled:  true,
+		Endpoint: os.Getenv("DEFAULT_TELEMETRY_ENDPOINT"),
+	}
+}
+
+// MergeTelemetryConfig merges component-level telemetry config with global defaults.
+// Component-level config takes precedence over global defaults.
+func MergeTelemetryConfig(componentConfig *kaosv1alpha1.TelemetryConfig) *kaosv1alpha1.TelemetryConfig {
+	// If component has explicit config, use it
+	if componentConfig != nil {
+		return componentConfig
+	}
+	// Otherwise fall back to global defaults
+	return GetDefaultTelemetryConfig()
+}
+
 // BuildTelemetryEnvVars creates environment variables for OpenTelemetry configuration.
 // Uses standard OTEL_* env vars so the SDK auto-configures.
 // serviceName is used as OTEL_SERVICE_NAME (typically the CR name).

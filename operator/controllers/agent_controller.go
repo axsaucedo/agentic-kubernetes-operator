@@ -513,10 +513,15 @@ func (r *AgentReconciler) constructEnvVars(agent *kaosv1alpha1.Agent, modelapi *
 		}
 	}
 
-	// OpenTelemetry configuration
-	if agent.Spec.Config != nil && agent.Spec.Config.Telemetry != nil {
+	// OpenTelemetry configuration - merge with global defaults
+	var componentTelemetry *kaosv1alpha1.TelemetryConfig
+	if agent.Spec.Config != nil {
+		componentTelemetry = agent.Spec.Config.Telemetry
+	}
+	telemetryConfig := util.MergeTelemetryConfig(componentTelemetry)
+	if telemetryConfig != nil {
 		otelEnv := util.BuildTelemetryEnvVars(
-			agent.Spec.Config.Telemetry,
+			telemetryConfig,
 			agent.Name,
 			agent.Namespace,
 		)
