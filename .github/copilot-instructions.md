@@ -81,3 +81,4 @@ Detailed instructions are in `.github/instructions/`:
 - `e2e.instructions.md`: E2E test setup, structure, gotchas and fast testing
 - `python.instructions.md`: Data Plane Python runtime framework details
 - `operator.instructions.md`: Control Plane Golang operator development
+- `docs.instructions.md`: VitePress docs, mermaid diagrams, multi-version builds
