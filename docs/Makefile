@@ -48,39 +48,20 @@ rebuild-tag:
 ifndef TAG
 	$(error TAG is required. Usage: make rebuild-tag TAG=v1.0.0)
 endif
-	@echo "Triggering docs rebuild for tag: $(TAG)"
 	@VERSION=$$(echo $(TAG) | sed 's/^v//'); \
-	gh workflow run release.yaml --ref $(TAG) 2>/dev/null || \
-	echo "Note: release.yaml workflow can only run on tag refs. Use rebuild-tags for bulk rebuilds."
-	@echo ""
-	@echo "Alternative: Create and push a lightweight commit to rebuild:"
-	@echo "  1. Checkout the tag: git checkout $(TAG)"
-	@echo "  2. Create a branch: git checkout -b docs-rebuild-$(TAG)"
-	@echo "  3. Make a trivial change to docs/"
-	@echo "  4. Commit and tag: git tag -f $(TAG) && git push --tags -f"
-	@echo ""
-	@echo "Or use the GitHub Actions UI to manually trigger the workflow."
+	gh workflow run rebuild-docs.yaml -f version=$$VERSION
+	@echo "Triggered rebuild for version: $(TAG)"
+	@echo "Check status: gh run list --workflow=rebuild-docs.yaml"
 
 # Interactive rebuild of all version tags
-# This displays instructions for rebuilding all versions retrospectively
 rebuild-tags:
-	@echo "=== Retrospective Docs Rebuild ==="
+	@echo "=== Rebuild All Version Docs ==="
 	@echo ""
-	@echo "To rebuild docs for all version tags with current config (e.g., mermaid support):"
+	@echo "To rebuild docs for all version tags with current config:"
+	@echo "  gh workflow run rebuild-docs.yaml -f version=all"
 	@echo ""
-	@echo "Option 1: Re-run release workflow for each tag (via GitHub UI)"
-	@echo "  1. Go to GitHub Actions > Release workflow"
-	@echo "  2. Re-run for each version tag"
-	@echo ""
-	@echo "Option 2: Cherry-pick docs changes to version branches"
-	@echo "  For each version tag that needs rebuilding:"
-	@echo "  1. Create a temp branch from the tag"
-	@echo "  2. Cherry-pick the docs config commits"
-	@echo "  3. Force-push the tag"
-	@echo "  4. This triggers the release workflow"
-	@echo ""
-	@echo "Option 3: Use the rebuild script (recommended for bulk updates)"
-	@echo "  ./scripts/rebuild-version-docs.sh"
+	@echo "To rebuild a specific version:"
+	@echo "  make rebuild-tag TAG=v0.1.3"
 	@echo ""
 	@echo "Available versions to rebuild:"
 	@git tag --list "v*" --sort=-v:refname | grep -v '^v0\.0\.' | head -10

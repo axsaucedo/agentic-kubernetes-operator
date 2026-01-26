@@ -101,27 +101,18 @@ graph LR
 
 When docs infrastructure changes (e.g., adding mermaid support), existing version docs need rebuilding.
 
-### Rebuild a Single Version
+### Using the Rebuild Workflow
+
 ```bash
-# Option 1: Re-run release workflow from GitHub UI
-# Go to Actions > Release > select tag > Re-run all jobs
+# Rebuild a single version
+gh workflow run rebuild-docs.yaml -f version=0.1.3
 
-# Option 2: Force-push the tag to trigger workflow
-git checkout v1.0.0
-git checkout -b rebuild-v1.0.0
-# Cherry-pick infrastructure changes from main
-git cherry-pick <commit-hash>
-git tag -f v1.0.0
-git push origin v1.0.0 --force
-```
+# Rebuild all versions
+gh workflow run rebuild-docs.yaml -f version=all
 
-### Rebuild All Versions
-For bulk rebuilds, use the GitHub Actions workflow manually or run:
-```bash
-# List versions
-make list-tags
-
-# For each version, re-trigger the release workflow via GitHub UI
+# Using Makefile
+make rebuild-tag TAG=v0.1.3
+make rebuild-tags  # Shows available versions
 ```
 
 ### Important: What Gets Rebuilt
@@ -136,6 +127,7 @@ make list-tags
 |----------|---------|------------|
 | `docs.yaml` | Push to main (docs/) | `/dev/` |
 | `release.yaml` | Version tag push | `/vX.Y.Z/` + `/latest/` |
+| `rebuild-docs.yaml` | Manual dispatch | Specified version(s) |
 
 ### Deployment Structure
 ```
