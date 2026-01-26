@@ -392,7 +392,7 @@ The operator automatically sets these environment variables when telemetry is en
 | `OTEL_SDK_DISABLED` | "false" when telemetry is enabled (standard OTel env var) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL from `telemetry.endpoint` |
 | `OTEL_SERVICE_NAME` | Defaults to CR name (agent or MCP server name) |
-| `OTEL_RESOURCE_ATTRIBUTES` | Appends `service.namespace` and `kaos.resource.name` to user values |
+| `OTEL_RESOURCE_ATTRIBUTES` | Sets `service.namespace` and `kaos.resource.name`; if user sets same var in spec.config.env, their value takes precedence |
 
 For additional configuration, use standard [OpenTelemetry environment variables](https://opentelemetry-python.readthedocs.io/en/latest/sdk/environment_variables.html) via `spec.config.env`.
 
