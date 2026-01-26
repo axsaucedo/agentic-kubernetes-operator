@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
 // Get version info from environment variables
 // DOCS_VERSION: 'dev', '1.0.0', etc.
@@ -35,7 +36,7 @@ function getVersionsNav() {
   }
 }
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: 'KAOS',
   description: 'K8s Agent Orchestration System',
   
@@ -158,5 +159,13 @@ export default defineConfig({
       pattern: 'https://github.com/axsaucedo/kaos/edit/main/docs/:path',
       text: 'Edit this page on GitHub'
     }
+  },
+  
+  // Mermaid configuration
+  mermaid: {
+    // Refer to https://mermaid.js.org/config/setup/modules/mermaidAPI.html#mermaidapi-configuration-defaults
+  },
+  mermaidPlugin: {
+    class: 'mermaid'
   }
-})
+}))
