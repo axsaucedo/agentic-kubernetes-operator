@@ -104,7 +104,17 @@ func TestMergeTelemetryConfig(t *testing.T) {
 			componentConfig: &kaosv1alpha1.TelemetryConfig{
 				Enabled: false,
 			},
-			expectEnabled: false,
+			expectEnabled:  false,
+			expectEndpoint: "http://global:4317", // inherits global endpoint
+		},
+		{
+			name: "inherits global endpoint when component sets enabled but no endpoint",
+			componentConfig: &kaosv1alpha1.TelemetryConfig{
+				Enabled: true,
+				// Endpoint not set
+			},
+			expectEnabled:  true,
+			expectEndpoint: "http://global:4317", // inherited from global
 		},
 	}
 
@@ -120,6 +130,50 @@ func TestMergeTelemetryConfig(t *testing.T) {
 			}
 			if tt.expectEndpoint != "" && result.Endpoint != tt.expectEndpoint {
 				t.Errorf("expected Endpoint=%s, got %s", tt.expectEndpoint, result.Endpoint)
+			}
+		})
+	}
+}
+
+func TestIsTelemetryConfigValid(t *testing.T) {
+	tests := []struct {
+		name   string
+		tel    *kaosv1alpha1.TelemetryConfig
+		expect bool
+	}{
+		{
+			name:   "nil is valid",
+			tel:    nil,
+			expect: true,
+		},
+		{
+			name:   "disabled is valid",
+			tel:    &kaosv1alpha1.TelemetryConfig{Enabled: false},
+			expect: true,
+		},
+		{
+			name: "enabled with endpoint is valid",
+			tel: &kaosv1alpha1.TelemetryConfig{
+				Enabled:  true,
+				Endpoint: "http://collector:4317",
+			},
+			expect: true,
+		},
+		{
+			name: "enabled without endpoint is invalid",
+			tel: &kaosv1alpha1.TelemetryConfig{
+				Enabled:  true,
+				Endpoint: "",
+			},
+			expect: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsTelemetryConfigValid(tt.tel)
+			if result != tt.expect {
+				t.Errorf("expected %v, got %v", tt.expect, result)
 			}
 		})
 	}

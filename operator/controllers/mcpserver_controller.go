@@ -83,6 +83,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	// Validate telemetry config
+	telemetryConfig := util.MergeTelemetryConfig(mcpserver.Spec.Config.Telemetry)
+	if !util.IsTelemetryConfigValid(telemetryConfig) {
+		log.Info("WARNING: telemetry.enabled=true but endpoint is empty; telemetry will not function", "mcpserver", mcpserver.Name)
+	}
+
 	// Create or update Deployment
 	deployment := &appsv1.Deployment{}
 	deploymentName := fmt.Sprintf("mcpserver-%s", mcpserver.Name)

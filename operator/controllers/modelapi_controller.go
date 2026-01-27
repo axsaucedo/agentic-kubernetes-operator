@@ -90,9 +90,14 @@ func (r *ModelAPIReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	needsConfigMap := modelapi.Spec.Mode == kaosv1alpha1.ModelAPIModeProxy &&
 		modelapi.Spec.ProxyConfig != nil
 
+	// Validate telemetry config
+	telemetry := util.MergeTelemetryConfig(modelapi.Spec.Telemetry)
+	if !util.IsTelemetryConfigValid(telemetry) {
+		log.Info("WARNING: telemetry.enabled=true but endpoint is empty; telemetry will not function", "modelapi", modelapi.Name)
+	}
+
 	// Warn if telemetry is enabled for Ollama (Hosted mode) - OTel not supported
 	if modelapi.Spec.Mode == kaosv1alpha1.ModelAPIModeHosted {
-		telemetry := util.MergeTelemetryConfig(modelapi.Spec.Telemetry)
 		if telemetry != nil && telemetry.Enabled {
 			log.Info("WARNING: OpenTelemetry telemetry is not supported for Ollama (Hosted mode). "+
 				"Traces and metrics will not be collected.", "modelapi", modelapi.Name)

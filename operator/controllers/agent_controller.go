@@ -88,6 +88,16 @@ func (r *AgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
+	// Validate telemetry config
+	var componentTelemetry *kaosv1alpha1.TelemetryConfig
+	if agent.Spec.Config != nil {
+		componentTelemetry = agent.Spec.Config.Telemetry
+	}
+	telemetryConfig := util.MergeTelemetryConfig(componentTelemetry)
+	if !util.IsTelemetryConfigValid(telemetryConfig) {
+		log.Info("WARNING: telemetry.enabled=true but endpoint is empty; telemetry will not function", "agent", agent.Name)
+	}
+
 	// Resolve ModelAPI reference
 	modelapi := &kaosv1alpha1.ModelAPI{}
 	err := r.Get(ctx, types.NamespacedName{Name: agent.Spec.ModelAPI, Namespace: agent.Namespace}, modelapi)

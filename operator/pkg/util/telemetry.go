@@ -20,15 +20,44 @@ func GetDefaultTelemetryConfig() *kaosv1alpha1.TelemetryConfig {
 	}
 }
 
-// MergeTelemetryConfig merges component-level telemetry config with global defaults.
-// Component-level config takes precedence over global defaults.
+// MergeTelemetryConfig performs field-wise merge of component-level telemetry config
+// with global defaults. Component-level fields take precedence when set.
+// This allows a component to set enabled=true and inherit the global endpoint.
 func MergeTelemetryConfig(componentConfig *kaosv1alpha1.TelemetryConfig) *kaosv1alpha1.TelemetryConfig {
-	// If component has explicit config, use it
-	if componentConfig != nil {
+	globalConfig := GetDefaultTelemetryConfig()
+
+	// If no component config, use global (may be nil)
+	if componentConfig == nil {
+		return globalConfig
+	}
+
+	// If no global config, use component as-is
+	if globalConfig == nil {
 		return componentConfig
 	}
-	// Otherwise fall back to global defaults
-	return GetDefaultTelemetryConfig()
+
+	// Field-wise merge: component fields take precedence if set
+	merged := &kaosv1alpha1.TelemetryConfig{
+		Enabled: componentConfig.Enabled, // Component controls enabled state
+	}
+
+	// Endpoint: use component if set, otherwise inherit global
+	if componentConfig.Endpoint != "" {
+		merged.Endpoint = componentConfig.Endpoint
+	} else {
+		merged.Endpoint = globalConfig.Endpoint
+	}
+
+	return merged
+}
+
+// IsTelemetryConfigValid returns true if the telemetry config is valid.
+// A valid config has enabled=true and non-empty endpoint.
+func IsTelemetryConfigValid(tel *kaosv1alpha1.TelemetryConfig) bool {
+	if tel == nil || !tel.Enabled {
+		return true // disabled is valid (just means no telemetry)
+	}
+	return tel.Endpoint != ""
 }
 
 // BuildTelemetryEnvVars creates environment variables for OpenTelemetry configuration.
