@@ -325,7 +325,7 @@ func (r *ModelAPIReconciler) constructDeployment(modelapi *kaosv1alpha1.ModelAPI
 	initContainers := []corev1.Container{}
 	ollamaImage := os.Getenv("DEFAULT_OLLAMA_IMAGE")
 	if ollamaImage == "" {
-		ollamaImage = "alpine/ollama:latest"
+		ollamaImage = "ollama/ollama:latest"
 	}
 	if modelapi.Spec.Mode == kaosv1alpha1.ModelAPIModeHosted && modelapi.Spec.HostedConfig != nil && modelapi.Spec.HostedConfig.Model != "" {
 		// Init container starts Ollama server, pulls model, then exits
@@ -501,7 +501,7 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *kaosv1alpha1.ModelAPI)
 		// Ollama Hosted mode
 		image = os.Getenv("DEFAULT_OLLAMA_IMAGE")
 		if image == "" {
-			image = "alpine/ollama:latest"
+			image = "ollama/ollama:latest"
 		}
 		args = []string{}
 		port = 11434

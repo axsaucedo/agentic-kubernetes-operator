@@ -275,13 +275,13 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *kaosv1alpha1.M
 	// Get default MCP server image from environment
 	defaultMcpImage := os.Getenv("DEFAULT_MCP_SERVER_IMAGE")
 	if defaultMcpImage == "" {
-		defaultMcpImage = "axsauze/kaos-agent:latest"
+		defaultMcpImage = "axsauze/kaos-mcp-server:v0.1.4-dev"
 	}
 
 	// Check if using tools config
 	if mcpserver.Spec.Config.Tools != nil {
 		if mcpserver.Spec.Config.Tools.FromString != "" {
-			// Use the kaos-agent image with MCP_TOOLS_STRING
+			// Use the kaos-mcp-server image with MCP_TOOLS_STRING
 			image = defaultMcpImage
 			command = []string{"python", "-m", "mcptools.server"}
 			env = append(env, corev1.EnvVar{
@@ -289,7 +289,7 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *kaosv1alpha1.M
 				Value: mcpserver.Spec.Config.Tools.FromString,
 			})
 		} else if mcpserver.Spec.Config.Tools.FromSecretKeyRef != nil {
-			// Use the kaos-agent image with MCP_TOOLS_STRING from secret
+			// Use the kaos-mcp-server image with MCP_TOOLS_STRING from secret
 			image = defaultMcpImage
 			command = []string{"python", "-m", "mcptools.server"}
 			env = append(env, corev1.EnvVar{

@@ -308,7 +308,7 @@ func (r *AgentReconciler) constructDeployment(agent *kaosv1alpha1.Agent, modelap
 	// Get agent image from environment or use default
 	agentImage := os.Getenv("DEFAULT_AGENT_IMAGE")
 	if agentImage == "" {
-		agentImage = "axsauze/kaos-agent:latest"
+		agentImage = "axsauze/kaos-agent:v0.1.4-dev"
 	}
 
 	container := corev1.Container{
