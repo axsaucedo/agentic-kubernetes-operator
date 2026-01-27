@@ -342,6 +342,8 @@ class Agent:
             attrs=span_attrs,
             metric_kind="request",
         )
+        # Use failed flag pattern to ensure spans close on return/yield/early exit
+        span_failed = False
         try:
             # Extract user-provided system prompt (if any) from message array
             user_system_prompt: Optional[str] = None
@@ -384,14 +386,16 @@ class Agent:
                 yield chunk
 
         except Exception as e:
+            span_failed = True
             self._otel.span_failure(e)
             error_msg = f"Error processing message: {str(e)}"
             logger.error(error_msg)
             error_event = self.memory.create_event("error", error_msg)
             await self.memory.add_event(session_id, error_event)
             yield f"Sorry, I encountered an error: {str(e)}"
-        else:
-            self._otel.span_success()
+        finally:
+            if not span_failed:
+                self._otel.span_success()
 
     async def _agentic_loop(
         self,
@@ -406,6 +410,8 @@ class Agent:
             # Start step span
             step_attrs = {"step": step + 1, "max_steps": self.max_steps}
             self._otel.span_begin(f"agent.step.{step + 1}", attrs=step_attrs)
+            # Use failed flag pattern to ensure spans close on continue/return/yield
+            step_failed = False
             try:
                 # Get model response
                 model_name = self.model_api.model if self.model_api else "unknown"
@@ -489,10 +495,12 @@ class Agent:
                 return
 
             except Exception as e:
+                step_failed = True
                 self._otel.span_failure(e)
                 raise
-            else:
-                self._otel.span_success()
+            finally:
+                if not step_failed:
+                    self._otel.span_success()
 
         # Max steps reached
         max_steps_msg = f"Reached maximum reasoning steps ({self.max_steps})"
@@ -508,14 +516,17 @@ class Agent:
             metric_kind="model",
             metric_attrs={"model": model_name},
         )
+        failed = False
         try:
             content = cast(str, await self.model_api.process_message(messages, stream=False))
+            return content
         except Exception as e:
+            failed = True
             self._otel.span_failure(e)
             raise
-        else:
-            self._otel.span_success()
-            return content
+        finally:
+            if not failed:
+                self._otel.span_success()
 
     async def _execute_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Any:
         """Execute a tool with tracing."""
@@ -526,6 +537,7 @@ class Agent:
             metric_kind="tool",
             metric_attrs={"tool": tool_name},
         )
+        failed = False
         try:
             tool_result = None
             for mcp_client in self.mcp_clients:
@@ -535,12 +547,14 @@ class Agent:
 
             if tool_result is None:
                 raise ValueError(f"Tool '{tool_name}' not found")
+            return tool_result
         except Exception as e:
+            failed = True
             self._otel.span_failure(e)
             raise
-        else:
-            self._otel.span_success()
-            return tool_result
+        finally:
+            if not failed:
+                self._otel.span_success()
 
     async def _execute_delegation(
         self,
@@ -557,16 +571,19 @@ class Agent:
             metric_kind="delegation",
             metric_attrs={"target": agent_name},
         )
+        failed = False
         try:
             result = await self.delegate_to_sub_agent(
                 agent_name, task, context_messages, session_id
             )
+            return result
         except Exception as e:
+            failed = True
             self._otel.span_failure(e)
             raise
-        else:
-            self._otel.span_success()
-            return result
+        finally:
+            if not failed:
+                self._otel.span_success()
 
     async def delegate_to_sub_agent(
         self,
