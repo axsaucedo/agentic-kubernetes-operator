@@ -84,9 +84,11 @@ class MCPServer:
 
     def __init__(self, settings: MCPServerSettings):
         """Initialize MCP server."""
-        # Check if OTel enabled via env var (OTEL_SDK_DISABLED=true disables)
-        otel_disabled = os.getenv("OTEL_SDK_DISABLED", "false").lower() in ("true", "1", "yes")
-        otel_enabled = not otel_disabled
+        # Check if OTel should be enabled using the shared utility
+        # This requires both OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT
+        from telemetry.manager import should_enable_otel
+
+        otel_enabled = should_enable_otel()
 
         # Configure logging with optional OTel correlation
         configure_logging(settings.mcp_log_level, otel_correlation=otel_enabled)

@@ -233,26 +233,49 @@ class TestContextPropagation:
 
 
 class TestMCPServerTelemetrySimplified:
-    """Tests for MCPServer simplified telemetry settings."""
+    """Tests for MCPServer telemetry detection using should_enable_otel()."""
 
-    def test_otel_not_disabled_by_default(self):
-        """Test that OTel is not disabled by default (OTEL_SDK_DISABLED not set).
+    def test_otel_disabled_without_required_env_vars(self):
+        """Test that OTel is disabled when required env vars are missing.
 
-        Note: _otel_enabled=True means "not disabled", not "fully configured".
-        Actual telemetry requires OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT.
+        MCPServer now uses should_enable_otel() which requires both
+        OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT.
         """
         with patch.dict(os.environ, {}, clear=True):
             from mcptools.server import MCPServer, MCPServerSettings
 
             settings = MCPServerSettings()
             server = MCPServer(settings)
-            # _otel_enabled means "not disabled", telemetry will be a no-op without
-            # OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT
+            # Without required env vars, telemetry should be disabled
+            assert server._otel_enabled is False
+
+    def test_otel_enabled_with_required_env_vars(self):
+        """Test that OTel is enabled when required env vars are set."""
+        with patch.dict(
+            os.environ,
+            {
+                "OTEL_SERVICE_NAME": "test-mcp",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4317",
+            },
+            clear=True,
+        ):
+            from mcptools.server import MCPServer, MCPServerSettings
+
+            settings = MCPServerSettings()
+            server = MCPServer(settings)
             assert server._otel_enabled is True
 
     def test_otel_disabled_from_env(self):
         """Test that OTel can be disabled via OTEL_SDK_DISABLED env var."""
-        with patch.dict(os.environ, {"OTEL_SDK_DISABLED": "true"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "OTEL_SDK_DISABLED": "true",
+                "OTEL_SERVICE_NAME": "test-mcp",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4317",
+            },
+            clear=True,
+        ):
             from mcptools.server import MCPServer, MCPServerSettings
 
             settings = MCPServerSettings()
