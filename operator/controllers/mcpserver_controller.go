@@ -96,7 +96,14 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if err != nil && apierrors.IsNotFound(err) {
 		// Create new Deployment
-		deployment = r.constructDeployment(mcpserver)
+		deployment, err = r.constructDeployment(mcpserver)
+		if err != nil {
+			log.Error(err, "failed to construct Deployment")
+			mcpserver.Status.Phase = "Failed"
+			mcpserver.Status.Message = fmt.Sprintf("Failed to construct Deployment: %v", err)
+			r.Status().Update(ctx, mcpserver)
+			return ctrl.Result{}, err
+		}
 		if err := controllerutil.SetControllerReference(mcpserver, deployment, r.Scheme); err != nil {
 			log.Error(err, "failed to set controller reference")
 			return ctrl.Result{}, err
@@ -115,7 +122,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	} else {
 		// Deployment exists - check if spec has changed using hash annotation
-		desiredDeployment := r.constructDeployment(mcpserver)
+		desiredDeployment, err := r.constructDeployment(mcpserver)
+		if err != nil {
+			log.Error(err, "failed to construct Deployment for comparison")
+			return ctrl.Result{}, err
+		}
 		currentHash := ""
 		if deployment.Spec.Template.Annotations != nil {
 			currentHash = deployment.Spec.Template.Annotations[util.PodSpecHashAnnotation]
@@ -206,7 +217,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 }
 
 // constructDeployment creates a Deployment for the MCPServer
-func (r *MCPServerReconciler) constructDeployment(mcpserver *kaosv1alpha1.MCPServer) *appsv1.Deployment {
+func (r *MCPServerReconciler) constructDeployment(mcpserver *kaosv1alpha1.MCPServer) (*appsv1.Deployment, error) {
 	labels := map[string]string{
 		"app":       "mcpserver",
 		"mcpserver": mcpserver.Name,
@@ -216,11 +227,15 @@ func (r *MCPServerReconciler) constructDeployment(mcpserver *kaosv1alpha1.MCPSer
 
 	// Construct container based on server type
 	var container corev1.Container
+	var err error
 	if mcpserver.Spec.Type == kaosv1alpha1.MCPServerTypePython {
-		container = r.constructPythonContainer(mcpserver)
+		container, err = r.constructPythonContainer(mcpserver)
 	} else {
 		// Default to Python if type is unknown
-		container = r.constructPythonContainer(mcpserver)
+		container, err = r.constructPythonContainer(mcpserver)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	basePodSpec := corev1.PodSpec{
@@ -262,20 +277,20 @@ func (r *MCPServerReconciler) constructDeployment(mcpserver *kaosv1alpha1.MCPSer
 		},
 	}
 
-	return deployment
+	return deployment, nil
 }
 
 // constructPythonContainer creates a container that runs MCP server
-func (r *MCPServerReconciler) constructPythonContainer(mcpserver *kaosv1alpha1.MCPServer) corev1.Container {
+func (r *MCPServerReconciler) constructPythonContainer(mcpserver *kaosv1alpha1.MCPServer) (corev1.Container, error) {
 	env := append([]corev1.EnvVar{}, mcpserver.Spec.Config.Env...)
 
 	var image string
 	var command []string
 
-	// Get default MCP server image from environment
+	// Get default MCP server image from environment (required - set via ConfigMap)
 	defaultMcpImage := os.Getenv("DEFAULT_MCP_SERVER_IMAGE")
 	if defaultMcpImage == "" {
-		defaultMcpImage = "axsauze/kaos-mcp-server:v0.1.4-dev"
+		return corev1.Container{}, fmt.Errorf("DEFAULT_MCP_SERVER_IMAGE environment variable is required but not set")
 	}
 
 	// Check if using tools config
@@ -359,7 +374,7 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *kaosv1alpha1.M
 		},
 	}
 
-	return container
+	return container, nil
 }
 
 // constructService creates a Service for the MCPServer
