@@ -19,9 +19,16 @@ metadata:
   name: hierarchy-modelapi
   namespace: kaos-hierarchy
 spec:
-  mode: Hosted
-  hostedConfig:
-    model: "smollm2:135m"
+  mode: Proxy
+  proxyConfig:
+    models:
+    - deepseek-ai/DeepSeek-V3-0324
+    provider: nebius
+    apiKey:
+      valueFrom:
+        secretKeyRef:
+          name: nebius-secrets
+          key: api-key
 
 ---
 # MCPServer: Echo tool
@@ -69,7 +76,7 @@ metadata:
   namespace: kaos-hierarchy
 spec:
   modelAPI: hierarchy-modelapi
-  model: "smollm2:135m"  # Required: must match hosted model
+  model: deepseek-ai/DeepSeek-V3-0324
   mcpServers:
   - hierarchy-echo-mcp
   config:
@@ -91,7 +98,7 @@ metadata:
   namespace: kaos-hierarchy
 spec:
   modelAPI: hierarchy-modelapi
-  model: "smollm2:135m"  # Required: must match hosted model
+  model: deepseek-ai/DeepSeek-V3-0324
   mcpServers:
   - hierarchy-echo-mcp
   config:
@@ -113,7 +120,7 @@ metadata:
   namespace: kaos-hierarchy
 spec:
   modelAPI: hierarchy-modelapi
-  model: "smollm2:135m"  # Required: must match hosted model
+  model: deepseek-ai/DeepSeek-V3-0324
   mcpServers:
   - hierarchy-calc-mcp
   config:
@@ -134,7 +141,7 @@ metadata:
   namespace: kaos-hierarchy
 spec:
   modelAPI: hierarchy-modelapi
-  model: "smollm2:135m"  # Required: must match hosted model
+  model: deepseek-ai/DeepSeek-V3-0324
   mcpServers:
   - hierarchy-echo-mcp
   config:
@@ -152,7 +159,7 @@ metadata:
   namespace: kaos-hierarchy
 spec:
   modelAPI: hierarchy-modelapi
-  model: "smollm2:135m"  # Required: must match hosted model
+  model: deepseek-ai/DeepSeek-V3-0324
   mcpServers:
   - hierarchy-echo-mcp
   config:
@@ -170,7 +177,7 @@ metadata:
   namespace: kaos-hierarchy
 spec:
   modelAPI: hierarchy-modelapi
-  model: "smollm2:135m"  # Required: must match hosted model
+  model: deepseek-ai/DeepSeek-V3-0324
   mcpServers:
   - hierarchy-calc-mcp
   config:
