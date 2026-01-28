@@ -511,6 +511,13 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *kaosv1alpha1.ModelAPI)
 				Name:  "OTEL_SERVICE_NAME",
 				Value: modelapi.Name,
 			})
+			// Exclude health check endpoints from OTEL traces (reduces noise from K8s probes)
+			// Uses OTEL_PYTHON_EXCLUDED_URLS (generic) since LiteLLM may use various instrumentations
+			// LiteLLM health endpoints: /health/liveliness, /health/liveness, /health/readiness
+			env = append(env, corev1.EnvVar{
+				Name:  "OTEL_PYTHON_EXCLUDED_URLS",
+				Value: "^/health.*",
+			})
 		}
 
 	} else {

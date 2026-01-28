@@ -401,6 +401,8 @@ config:
 
 The operator automatically sets these environment variables when telemetry is enabled:
 
+**Agent and MCPServer:**
+
 | Variable | Description |
 |----------|-------------|
 | `OTEL_SDK_DISABLED` | "false" when telemetry is enabled (standard OTel env var) |
@@ -408,6 +410,15 @@ The operator automatically sets these environment variables when telemetry is en
 | `OTEL_SERVICE_NAME` | Defaults to CR name (agent or MCP server name) |
 | `OTEL_RESOURCE_ATTRIBUTES` | Sets `service.namespace` and `kaos.resource.name`; if user sets same var in spec.config.env, their value takes precedence |
 | `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS` | Excludes `/health` and `/ready` endpoints from tracing (reduces noise from Kubernetes probes) |
+
+**ModelAPI (LiteLLM):**
+
+| Variable | Description |
+|----------|-------------|
+| `OTEL_EXPORTER` | "otlp" to enable OTLP exporter |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL from `telemetry.endpoint` |
+| `OTEL_SERVICE_NAME` | Defaults to ModelAPI CR name |
+| `OTEL_PYTHON_EXCLUDED_URLS` | Excludes `/health.*` endpoints from tracing (generic exclusion for all instrumentations) |
 
 For additional configuration, use standard [OpenTelemetry environment variables](https://opentelemetry-python.readthedocs.io/en/latest/sdk/environment_variables.html) via `spec.config.env`.
 
@@ -426,7 +437,7 @@ These are excluded via the `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS` environment varia
 **ModelAPI (LiteLLM):**
 - `/health/liveliness`, `/health/liveness`, `/health/readiness`
 
-These endpoints are not traced because LiteLLM uses callback-based OpenTelemetry integration that only traces LLM completion requests, not HTTP endpoints.
+These endpoints are excluded via the `OTEL_PYTHON_EXCLUDED_URLS` environment variable (generic version that covers all instrumentations). LiteLLM uses callback-based OpenTelemetry for LLM traces, but may also have FastAPI auto-instrumentation enabled.
 
 ### Customizing Exclusions
 
