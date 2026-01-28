@@ -233,7 +233,7 @@ func TestBuildTelemetryEnvVars(t *testing.T) {
 					if env.Name == "OTEL_SERVICE_NAME" && env.Value == tt.serviceName {
 						hasServiceName = true
 					}
-					if env.Name == "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS" && env.Value == "^/health$,^/ready$" {
+					if env.Name == "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS" && env.Value == "/health,/ready" {
 						hasExcludedURLs = true
 					}
 				}
@@ -244,7 +244,7 @@ func TestBuildTelemetryEnvVars(t *testing.T) {
 					t.Errorf("expected OTEL_SERVICE_NAME=%s", tt.serviceName)
 				}
 				if !hasExcludedURLs {
-					t.Error("expected OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=^/health$,^/ready$")
+					t.Error("expected OTEL_PYTHON_FASTAPI_EXCLUDED_URLS=/health,/ready")
 				}
 			}
 		})

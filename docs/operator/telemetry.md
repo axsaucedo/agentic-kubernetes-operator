@@ -418,7 +418,7 @@ The operator automatically sets these environment variables when telemetry is en
 | `OTEL_EXPORTER` | "otlp" to enable OTLP exporter |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint URL from `telemetry.endpoint` |
 | `OTEL_SERVICE_NAME` | Defaults to ModelAPI CR name |
-| `OTEL_PYTHON_EXCLUDED_URLS` | Excludes `/health.*` endpoints from tracing (generic exclusion for all instrumentations) |
+| `OTEL_PYTHON_EXCLUDED_URLS` | Excludes `/health` endpoints from tracing (generic exclusion for all instrumentations) |
 
 For additional configuration, use standard [OpenTelemetry environment variables](https://opentelemetry-python.readthedocs.io/en/latest/sdk/environment_variables.html) via `spec.config.env`.
 
@@ -432,12 +432,12 @@ By default, Kubernetes liveness and readiness probe endpoints are excluded from 
 - `/health` - Kubernetes liveness probe
 - `/ready` - Kubernetes readiness probe
 
-These are excluded via the `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS` environment variable, which is automatically set when telemetry is enabled.
+These are excluded via the `OTEL_PYTHON_FASTAPI_EXCLUDED_URLS` environment variable set to `/health,/ready`. The patterns use regex `search()` (not `match()`), so they match anywhere in the URL path.
 
 **ModelAPI (LiteLLM):**
 - `/health/liveliness`, `/health/liveness`, `/health/readiness`
 
-These endpoints are excluded via the `OTEL_PYTHON_EXCLUDED_URLS` environment variable (generic version that covers all instrumentations). LiteLLM uses callback-based OpenTelemetry for LLM traces, but may also have FastAPI auto-instrumentation enabled.
+These endpoints are excluded via the `OTEL_PYTHON_EXCLUDED_URLS` environment variable set to `/health`. This matches all health-related endpoints.
 
 ### Customizing Exclusions
 
@@ -451,10 +451,10 @@ spec:
       endpoint: "http://otel-collector:4317"
     env:
     - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
-      value: "^/health$,^/ready$,^/metrics$,^/internal/.*"
+      value: "/health,/ready,/metrics,/internal"
 ```
 
-The value is a comma-separated list of regex patterns. Note that when you override this variable, you must include the default patterns (`^/health$,^/ready$`) if you still want to exclude health checks.
+The value is a comma-separated list of patterns. Patterns are matched using regex `search()`, so `/health` will match any URL containing `/health`. Note that when you override this variable, you must include the default patterns (`/health,/ready`) if you still want to exclude health checks.
 
 ## Troubleshooting
 

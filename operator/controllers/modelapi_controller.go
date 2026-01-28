@@ -516,7 +516,7 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *kaosv1alpha1.ModelAPI)
 			// LiteLLM health endpoints: /health/liveliness, /health/liveness, /health/readiness
 			env = append(env, corev1.EnvVar{
 				Name:  "OTEL_PYTHON_EXCLUDED_URLS",
-				Value: "^/health.*",
+				Value: "/health",
 			})
 		}
 
