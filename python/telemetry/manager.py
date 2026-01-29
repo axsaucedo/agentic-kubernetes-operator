@@ -103,6 +103,29 @@ def is_otel_enabled() -> bool:
     return _initialized
 
 
+def get_current_trace_context() -> Optional[Dict[str, str]]:
+    """Get current trace context (trace_id, span_id) if available.
+
+    Returns:
+        Dictionary with trace_id and span_id, or None if no active span.
+    """
+    if not _initialized:
+        return None
+
+    current_span = trace.get_current_span()
+    if current_span is None:
+        return None
+
+    span_context = current_span.get_span_context()
+    if not span_context.is_valid:
+        return None
+
+    return {
+        "trace_id": format(span_context.trace_id, "032x"),
+        "span_id": format(span_context.span_id, "016x"),
+    }
+
+
 def should_enable_otel() -> bool:
     """Check if OTel should be enabled based on environment variables.
 
