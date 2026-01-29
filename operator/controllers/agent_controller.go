@@ -549,6 +549,11 @@ func (r *AgentReconciler) constructEnvVars(agent *kaosv1alpha1.Agent, modelapi *
 		env = append(env, otelEnv...)
 	}
 
+	// Add LOG_LEVEL env var (if not already set by user in spec.config.env)
+	if logLevelEnv := util.BuildLogLevelEnvVar(env); logLevelEnv != nil {
+		env = append(env, logLevelEnv...)
+	}
+
 	return env
 }
 

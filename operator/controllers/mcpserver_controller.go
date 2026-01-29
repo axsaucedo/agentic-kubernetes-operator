@@ -337,6 +337,11 @@ func (r *MCPServerReconciler) constructPythonContainer(mcpserver *kaosv1alpha1.M
 		env = append(env, otelEnv...)
 	}
 
+	// Add LOG_LEVEL env var (if not already set by user in spec.config.env)
+	if logLevelEnv := util.BuildLogLevelEnvVar(env); logLevelEnv != nil {
+		env = append(env, logLevelEnv...)
+	}
+
 	container := corev1.Container{
 		Name:            "mcp-server",
 		Image:           image,

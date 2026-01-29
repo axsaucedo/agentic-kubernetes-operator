@@ -108,3 +108,30 @@ func BuildTelemetryEnvVars(tel *kaosv1alpha1.TelemetryConfig, serviceName, names
 
 	return envVars
 }
+
+// GetDefaultLogLevel returns the default log level from the DEFAULT_LOG_LEVEL env var.
+// Falls back to "INFO" if not set.
+func GetDefaultLogLevel() string {
+	level := os.Getenv("DEFAULT_LOG_LEVEL")
+	if level == "" {
+		return "INFO"
+	}
+	return level
+}
+
+// BuildLogLevelEnvVar creates the LOG_LEVEL env var if not already in the provided list.
+// Returns a slice with the LOG_LEVEL env var, or empty if already present.
+func BuildLogLevelEnvVar(existingEnv []corev1.EnvVar) []corev1.EnvVar {
+	// Check if LOG_LEVEL is already set
+	for _, e := range existingEnv {
+		if e.Name == "LOG_LEVEL" {
+			return nil // Already set by user
+		}
+	}
+	return []corev1.EnvVar{
+		{
+			Name:  "LOG_LEVEL",
+			Value: GetDefaultLogLevel(),
+		},
+	}
+}

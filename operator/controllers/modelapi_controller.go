@@ -485,9 +485,15 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *kaosv1alpha1.ModelAPI)
 			}
 		}
 		if !hasLiteLLMLog {
+			// Map LOG_LEVEL to LITELLM_LOG (LiteLLM supports DEBUG, INFO, WARNING, ERROR)
+			litellmLogLevel := util.GetDefaultLogLevel()
+			// TRACE -> DEBUG for LiteLLM (no TRACE level)
+			if litellmLogLevel == "TRACE" {
+				litellmLogLevel = "DEBUG"
+			}
 			env = append(env, corev1.EnvVar{
 				Name:  "LITELLM_LOG",
-				Value: "INFO",
+				Value: litellmLogLevel,
 			})
 		}
 
@@ -534,6 +540,33 @@ func (r *ModelAPIReconciler) constructContainer(modelapi *kaosv1alpha1.ModelAPI)
 		// Add user-provided env vars for hosted
 		if modelapi.Spec.HostedConfig != nil {
 			env = append(env, modelapi.Spec.HostedConfig.Env...)
+		}
+
+		// Map LOG_LEVEL to OLLAMA_DEBUG (Ollama uses 0=INFO, 1=DEBUG, 2=TRACE)
+		hasOllamaDebug := false
+		for _, e := range env {
+			if e.Name == "OLLAMA_DEBUG" {
+				hasOllamaDebug = true
+				break
+			}
+		}
+		if !hasOllamaDebug {
+			logLevel := util.GetDefaultLogLevel()
+			var ollamaDebugLevel string
+			switch logLevel {
+			case "TRACE":
+				ollamaDebugLevel = "2"
+			case "DEBUG":
+				ollamaDebugLevel = "1"
+			default:
+				ollamaDebugLevel = "0" // INFO, WARNING, ERROR -> no debug
+			}
+			if ollamaDebugLevel != "0" { // Only set if enabling debug
+				env = append(env, corev1.EnvVar{
+					Name:  "OLLAMA_DEBUG",
+					Value: ollamaDebugLevel,
+				})
+			}
 		}
 	}
 
