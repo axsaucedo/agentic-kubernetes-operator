@@ -3,8 +3,10 @@ AgentServer implementation for OpenAI-compatible API.
 
 FastAPI server with health probes, agent discovery, and chat completions endpoint.
 Supports both streaming and non-streaming responses.
+Includes OpenTelemetry instrumentation for tracing, metrics, and log correlation.
 """
 
+import os
 import time
 import uuid
 import logging
@@ -14,7 +16,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from pydantic_settings import BaseSettings
 import uvicorn
 
@@ -22,24 +24,52 @@ from modelapi.client import ModelAPI
 from agent.client import Agent, RemoteAgent
 from agent.memory import LocalMemory
 from mcptools.client import MCPClient
+from telemetry.manager import init_otel, is_otel_enabled, should_enable_otel
 
 
-def configure_logging(level: str = "INFO") -> None:
+def get_log_level() -> str:
+    """Get log level from environment, preferring LOG_LEVEL over AGENT_LOG_LEVEL."""
+    return os.getenv("LOG_LEVEL", os.getenv("AGENT_LOG_LEVEL", "INFO")).upper()
+
+
+def configure_logging(level: str = "INFO", otel_correlation: bool = False) -> None:
     """Configure logging for the application.
 
     Sets up a consistent logging format and ensures all application loggers
     are properly configured to output to stdout.
+
+    Args:
+        level: Log level (DEBUG, INFO, WARNING, ERROR)
+        otel_correlation: If True, include trace_id and span_id in log format
     """
     log_level = getattr(logging, level.upper(), logging.INFO)
+
+    # Log format with optional OTel correlation
+    if otel_correlation:
+        log_format = (
+            "%(asctime)s - %(name)s - %(levelname)s - "
+            "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] - %(message)s"
+        )
+    else:
+        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
     # Configure root logger
     logging.basicConfig(
         level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format=log_format,
         datefmt="%Y-%m-%d %H:%M:%S",
         stream=sys.stdout,
         force=True,  # Override any existing configuration
     )
+
+    # If OTel correlation is enabled, add the LoggingInstrumentor
+    if otel_correlation:
+        try:
+            from opentelemetry.instrumentation.logging import LoggingInstrumentor
+
+            LoggingInstrumentor().instrument(set_logging_format=False)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to enable OTel log correlation: {e}")
 
     # Ensure our application loggers are at the right level
     for logger_name in [
@@ -146,7 +176,21 @@ class AgentServer:
         )
 
         self._setup_routes()
+        self._setup_telemetry()
         logger.info(f"AgentServer initialized for {agent.name} on port {port}")
+
+    def _setup_telemetry(self):
+        """Setup OpenTelemetry instrumentation for FastAPI."""
+        if is_otel_enabled():
+            try:
+                from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+                from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+                FastAPIInstrumentor.instrument_app(self.app)
+                HTTPXClientInstrumentor().instrument()
+                logger.info("OpenTelemetry instrumentation enabled (FastAPI + HTTPX)")
+            except Exception as e:
+                logger.warning(f"Failed to enable OpenTelemetry instrumentation: {e}")
 
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
@@ -167,6 +211,7 @@ class AgentServer:
         logger.info(f"Max Steps: {self.agent.max_steps}")
         logger.info(f"Memory Context Limit: {self.agent.memory_context_limit}")
         logger.info(f"Memory Enabled: {self.agent.memory_enabled}")
+        logger.info(f"Log Level: {get_log_level()}")
 
         # Log model API info
         if self.agent.model_api:
@@ -188,6 +233,18 @@ class AgentServer:
                 logger.info(f"  - {name}: {sub.card_url}")
         else:
             logger.info("Sub-agents: None")
+
+        # Log OpenTelemetry configuration
+        otel_enabled = is_otel_enabled()
+        logger.info(f"OpenTelemetry Enabled: {otel_enabled}")
+        if otel_enabled:
+            logger.info(f"  OTEL_SERVICE_NAME: {os.getenv('OTEL_SERVICE_NAME', 'N/A')}")
+            logger.info(
+                f"  OTEL_EXPORTER_OTLP_ENDPOINT: {os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', 'N/A')}"
+            )
+            logger.debug(
+                f"  OTEL_RESOURCE_ATTRIBUTES: {os.getenv('OTEL_RESOURCE_ATTRIBUTES', 'N/A')}"
+            )
 
         logger.info(f"Access Log: {self.access_log}")
         logger.info("=" * 60)
@@ -435,8 +492,13 @@ def create_agent_server(
         # Load from environment variables - requires AGENT_NAME and MODEL_API_URL
         settings = AgentServerSettings()  # type: ignore[call-arg]
 
-    # Configure logging before anything else
-    configure_logging(settings.agent_log_level)
+    # Check if OTel should be enabled based on env vars (before init_otel)
+    otel_should_enable = should_enable_otel()
+
+    # Configure logging with optional OTel correlation
+    # Use LOG_LEVEL env var (preferred) or fallback to AGENT_LOG_LEVEL
+    log_level = get_log_level()
+    configure_logging(log_level, otel_correlation=otel_should_enable)
 
     model_api = ModelAPI(model=settings.model_name, api_base=settings.model_api_url)
 
@@ -504,6 +566,10 @@ def create_agent_server(
         )
     else:
         memory = NullMemory()
+
+    # Initialize OpenTelemetry if enabled (uses standard OTEL_* env vars)
+    # Note: LoggingInstrumentor is already called in configure_logging() above
+    init_otel(settings.agent_name)
 
     agent = Agent(
         name=settings.agent_name,
